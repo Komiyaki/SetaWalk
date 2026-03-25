@@ -1,0 +1,1 @@
+enum SearchFieldType { start, destination }
