@@ -12,6 +12,7 @@ import 'services/google_places_service.dart';
 import 'services/location_service.dart';
 import 'widgets/bottom_nav_bar.dart';
 import 'widgets/preferences_drawer.dart';
+import 'widgets/settings_drawer.dart';
 import 'widgets/search_card.dart';
 import 'widgets/suggestions_list.dart';
 
@@ -44,7 +45,7 @@ class _HomePageState extends State<HomePage> {
 
   Position? _currentPosition;
   bool _isGettingLocation = true;
-  bool _useMockLocation = true;
+  final bool _useMockLocation = true;
 
   final Set<Marker> _markers = {};
   PreferencesData _preferences = const PreferencesData();
@@ -354,6 +355,7 @@ class _HomePageState extends State<HomePage> {
       onTap: _dismissKeyboardAndSuggestions,
       child: Scaffold(
         key: _scaffoldKey,
+        drawer: const SettingsDrawer(),
         endDrawer: PreferencesDrawer(
           preferences: _preferences,
           onShrinesChanged: (value) {
@@ -412,10 +414,8 @@ class _HomePageState extends State<HomePage> {
                       destinationFocusNode: _destinationFocusNode,
                       onStartChanged: (value) =>
                           _onSearchChanged(value, SearchFieldType.start),
-                      onDestinationChanged: (value) => _onSearchChanged(
-                        value,
-                        SearchFieldType.destination,
-                      ),
+                      onDestinationChanged: (value) =>
+                          _onSearchChanged(value, SearchFieldType.destination),
                       onStartSubmitted: (value) =>
                           _goToPlace(value, SearchFieldType.start),
                       onDestinationSubmitted: (value) =>
@@ -468,6 +468,9 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
         bottomNavigationBar: HomeBottomNavBar(
+          onSettingsTap: () {
+            _scaffoldKey.currentState?.openDrawer();
+          },
           onMenuTap: () {
             _scaffoldKey.currentState?.openEndDrawer();
           },

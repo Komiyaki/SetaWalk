@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-
-import 'features/home/home_page.dart';
+import 'package:setawalk/features/home/auth/auth_gate.dart';
 
 class SetaWalkApp extends StatelessWidget {
   const SetaWalkApp({super.key});
@@ -13,7 +12,7 @@ class SetaWalkApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
       ),
-      home: const HomePage(),
+      home: const AuthGate(),
     );
   }
 }

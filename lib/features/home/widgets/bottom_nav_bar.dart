@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 class HomeBottomNavBar extends StatelessWidget {
+  final VoidCallback onSettingsTap;
   final VoidCallback onMenuTap;
 
   const HomeBottomNavBar({
     super.key,
+    required this.onSettingsTap,
     required this.onMenuTap,
   });
 
@@ -22,7 +24,7 @@ class HomeBottomNavBar extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
           InkWell(
-            onTap: () {},
+            onTap: onSettingsTap,
             borderRadius: BorderRadius.circular(12),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,

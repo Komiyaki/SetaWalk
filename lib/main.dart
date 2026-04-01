@@ -2,14 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app.dart';
 
-void main() async{
+const supabaseUrl = String.fromEnvironment('supabaseUrl');
+const supabaseAnonKey = String.fromEnvironment('supabaseAnonKey');
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  print('SUPABASE URL: $supabaseUrl');
+  print('SUPABASE ANON KEY EMPTY: ${supabaseAnonKey.isEmpty}');
+
   await Supabase.initialize(
-    url: String.fromEnvironment('supabaseUrl'),
-    anonKey: String.fromEnvironment('supabaseAnonKey'),
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
   );
+
   runApp(const SetaWalkApp());
 }
 
-final supbase = Supabase.instance.client;
+final supabase = Supabase.instance.client;
