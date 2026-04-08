@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -11,9 +10,10 @@ import 'models/search_field_type.dart';
 import 'services/google_places_service.dart';
 import 'services/location_service.dart';
 import 'widgets/bottom_nav_bar.dart';
+import 'widgets/map_compass.dart';
 import 'widgets/preferences_drawer.dart';
-import 'widgets/settings_drawer.dart';
 import 'widgets/search_card.dart';
+import 'widgets/settings_drawer.dart';
 import 'widgets/suggestions_list.dart';
 
 class HomePage extends StatefulWidget {
@@ -49,6 +49,85 @@ class _HomePageState extends State<HomePage> {
 
   final Set<Marker> _markers = {};
   PreferencesData _preferences = const PreferencesData();
+
+  double _cameraBearing = 0;
+
+  bool get _hasStartFilled => _startController.text.trim().isNotEmpty;
+  bool get _hasDestinationFilled =>
+      _destinationController.text.trim().isNotEmpty;
+
+  Marker? _findMarkerById(String id) {
+    try {
+      return _markers.firstWhere((marker) => marker.markerId.value == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _onGoPressed() async {
+    final hasStart = _hasStartFilled;
+    final hasDestination = _hasDestinationFilled;
+
+    if (!hasStart && !hasDestination) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Please fill out both the starting point and destination.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (!hasStart) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill out the starting point.')),
+      );
+      return;
+    }
+
+    if (!hasDestination) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill out the destination.')),
+      );
+      return;
+    }
+
+    final startMarker = _findMarkerById('start_place');
+    final destinationMarker = _findMarkerById('destination_place');
+
+    if (startMarker == null || destinationMarker == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not find both waypoint pins on the map yet.'),
+        ),
+      );
+      return;
+    }
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        startMarker.position.latitude < destinationMarker.position.latitude
+            ? startMarker.position.latitude
+            : destinationMarker.position.latitude,
+        startMarker.position.longitude < destinationMarker.position.longitude
+            ? startMarker.position.longitude
+            : destinationMarker.position.longitude,
+      ),
+      northeast: LatLng(
+        startMarker.position.latitude > destinationMarker.position.latitude
+            ? startMarker.position.latitude
+            : destinationMarker.position.latitude,
+        startMarker.position.longitude > destinationMarker.position.longitude
+            ? startMarker.position.longitude
+            : destinationMarker.position.longitude,
+      ),
+    );
+
+    await _mapController?.animateCamera(
+      CameraUpdate.newLatLngBounds(bounds, 100),
+    );
+  }
 
   @override
   void initState() {
@@ -87,6 +166,7 @@ class _HomePageState extends State<HomePage> {
   void _hideSuggestionsIfNoFieldIsFocused() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (!mounted) return;
+
       if (!_startFocusNode.hasFocus && !_destinationFocusNode.hasFocus) {
         setState(() {
           _showSuggestions = false;
@@ -109,11 +189,40 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _currentPosition = result.position;
       _isGettingLocation = false;
+      _cameraBearing = 0;
     });
 
     await _mapController?.animateCamera(
-      CameraUpdate.newCameraPosition(result.cameraPosition),
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: result.cameraPosition.target,
+          zoom: result.cameraPosition.zoom,
+          bearing: 0,
+          tilt: 0,
+        ),
+      ),
     );
+  }
+
+  Future<void> _resetMapNorth() async {
+    await _mapController?.animateCamera(
+      CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: _currentPosition != null
+              ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
+              : AppConstants.initialCameraPosition.target,
+          zoom: 16,
+          bearing: 0,
+          tilt: 0,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _cameraBearing = 0;
+    });
   }
 
   TextEditingController? get _activeController {
@@ -157,6 +266,7 @@ class _HomePageState extends State<HomePage> {
     });
 
     final trimmedValue = value.trim();
+
     if (trimmedValue.length < 2) {
       setState(() {
         _suggestions = [];
@@ -258,16 +368,19 @@ class _HomePageState extends State<HomePage> {
 
     await _mapController?.animateCamera(
       CameraUpdate.newCameraPosition(
-        CameraPosition(target: latLng, zoom: 15.5, tilt: 45, bearing: 0),
+        CameraPosition(target: latLng, zoom: 15.5, tilt: 0, bearing: 0),
       ),
     );
 
     setState(() {
+      _cameraBearing = 0;
+
       final markerId = selectedField == SearchFieldType.start
           ? const MarkerId('start_place')
           : const MarkerId('destination_place');
 
       _markers.removeWhere((marker) => marker.markerId == markerId);
+
       _markers.add(
         Marker(
           markerId: markerId,
@@ -289,6 +402,7 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _goToPlace(String query, SearchFieldType fieldType) async {
     final trimmedQuery = query.trim();
+
     if (trimmedQuery.length < 2) {
       return;
     }
@@ -330,8 +444,10 @@ class _HomePageState extends State<HomePage> {
 
   void _dismissKeyboardAndSuggestions() {
     FocusScope.of(context).unfocus();
+
     Future.delayed(const Duration(milliseconds: 100), () {
       if (!mounted) return;
+
       setState(() {
         _showSuggestions = false;
       });
@@ -394,13 +510,23 @@ class _HomePageState extends State<HomePage> {
               myLocationEnabled: _currentPosition != null,
               myLocationButtonEnabled: _currentPosition != null,
               compassEnabled: false,
+              rotateGesturesEnabled: true,
+              tiltGesturesEnabled: true,
               markers: _markers,
               onMapCreated: (controller) async {
                 _mapController = controller;
                 await _getCurrentLocation();
               },
+              onCameraMove: (position) {
+                if (!mounted) return;
+
+                setState(() {
+                  _cameraBearing = position.bearing;
+                });
+              },
               onTap: (_) => _dismissKeyboardAndSuggestions(),
             ),
+
             SafeArea(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -434,6 +560,49 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ),
+
+            SafeArea(
+              child: Align(
+                alignment: Alignment.bottomLeft,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 16, bottom: 90),
+                  child: MapCompass(
+                    bearing: _cameraBearing,
+                    onTap: _resetMapNorth,
+                  ),
+                ),
+              ),
+            ),
+
+            SafeArea(
+              child: Align(
+                alignment: Alignment.bottomRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 16, bottom: 90),
+                  child: SizedBox(
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: _onGoPressed,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 22),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 4,
+                      ),
+                      child: const Text(
+                        'Go',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
             if (_isGettingLocation)
               const SafeArea(
                 child: Align(

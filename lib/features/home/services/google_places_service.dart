@@ -20,8 +20,7 @@ class GooglePlacesService {
       '&sessiontoken=$sessionToken'
       '&components=country:jp'
       '&location=${AppConstants.setaMeguroCenter.latitude},${AppConstants.setaMeguroCenter.longitude}'
-      '&radius=4000'
-      '&strictbounds=true',
+      '&radius=7500',
     );
 
     final response = await http.get(url);
