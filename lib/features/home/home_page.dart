@@ -15,6 +15,7 @@ import 'widgets/preferences_drawer.dart';
 import 'widgets/search_card.dart';
 import 'widgets/settings_drawer.dart';
 import 'widgets/suggestions_list.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -27,7 +28,7 @@ class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final GooglePlacesService _googlePlacesService = const GooglePlacesService();
   final LocationService _locationService = const LocationService();
-
+  SupabaseClient get _sb => Supabase.instance.client;
   final TextEditingController _startController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
 
@@ -178,6 +179,46 @@ class _HomePageState extends State<HomePage> {
   String _generateSessionToken() {
     return DateTime.now().millisecondsSinceEpoch.toString();
   }
+  Future<void> _savePreferencesToSupabase() async {
+    final user = _sb.auth.currentUser;
+    if (user == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You must be logged in to save preferences'),
+        ),
+      );
+      return;
+    }
+
+    final payload = <String, dynamic>{
+      'user': user.id,
+      'shopping': _preferences.shopping.round(),
+      'greenway': 0,
+      'eating': _preferences.cafes.round(),
+      'park': _preferences.parks.round(),
+      'placeofworship': _preferences.shrines.round(),
+      'added_duration': _preferences.addedDuration.round(),
+    };
+
+    try {
+      await _sb.from('user_preferences').upsert(
+            payload,
+            onConflict: 'user',
+          );
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Preferences saved')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Save failed: $e')),
+      );
+    }
+  }
+
 
   Future<void> _getCurrentLocation() async {
     final result = await _locationService.getCurrentLocation(
@@ -425,22 +466,27 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _savePreferences() {
-    Navigator.of(context).pop();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Preferences saved: '
-          'Shrines ${_preferences.shrines.round()}, '
-          'Shopping ${_preferences.shopping.round()}, '
-          'Cafes ${_preferences.cafes.round()}, '
-          'Parks ${_preferences.parks.round()}, '
-          'Duration ${_preferences.addedDuration.round()}',
-        ),
-      ),
-    );
+  Future<void> _savePreferences() async {
+        Navigator.of(context).pop();
+       await _savePreferencesToSupabase();
   }
+
+  // void _savePreferences() {
+  //   Navigator.of(context).pop();
+
+  //   ScaffoldMessenger.of(context).showSnackBar(
+  //     SnackBar(
+  //       content: Text(
+  //         'Preferences saved: '
+  //         'Shrines ${_preferences.shrines.round()}, '
+  //         'Shopping ${_preferences.shopping.round()}, '
+  //         'Cafes ${_preferences.cafes.round()}, '
+  //         'Parks ${_preferences.parks.round()}, '
+  //         'Duration ${_preferences.addedDuration.round()}',
+  //       ),
+  //     ),
+  //   );
+  // }
 
   void _dismissKeyboardAndSuggestions() {
     FocusScope.of(context).unfocus();
@@ -540,8 +586,12 @@ class _HomePageState extends State<HomePage> {
                       destinationFocusNode: _destinationFocusNode,
                       onStartChanged: (value) =>
                           _onSearchChanged(value, SearchFieldType.start),
-                      onDestinationChanged: (value) =>
-                          _onSearchChanged(value, SearchFieldType.destination),
+                      // onDestinationChanged: (value) =>
+                      //     _onSearchChanged(value, SearchFieldType.destination),
+                             onDestinationChanged: (value) => _onSearchChanged(
+                        value,
+                        SearchFieldType.destination,
+                      ),
                       onStartSubmitted: (value) =>
                           _goToPlace(value, SearchFieldType.start),
                       onDestinationSubmitted: (value) =>
