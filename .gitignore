@@ -48,13 +48,5 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Android
-android/app/build/
-android/.gradle/
-android/local.properties
-android/.idea/
-*.jks
-*.keystore
-
 # Local secrets
 secrets.properties
