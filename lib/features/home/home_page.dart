@@ -48,12 +48,13 @@ class _HomePageState extends State<HomePage> {
 
   Position? _currentPosition;
   bool _isGettingLocation = true;
-  final bool _useMockLocation = true;
+  bool _useMockLocation = true;
 
   final Set<Marker> _markers = {};
   PreferencesData _preferences = const PreferencesData();
 
   double _cameraBearing = 0;
+  bool _hasShownPermissionPopup = false;
 
   bool get _hasStartFilled => _startController.text.trim().isNotEmpty;
   bool get _hasDestinationFilled =>
@@ -144,6 +145,12 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _setupFocusListeners();
     _loadSavedPreferences();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _hasShownPermissionPopup) return;
+      _hasShownPermissionPopup = true;
+      _showLocationPermissionDialog();
+    });
   }
 
   void _setupFocusListeners() {
@@ -159,6 +166,8 @@ class _HomePageState extends State<HomePage> {
         _hideSuggestionsIfNoFieldIsFocused();
       }
     });
+
+    
 
     _destinationFocusNode.addListener(() {
       if (_destinationFocusNode.hasFocus) {
@@ -521,6 +530,45 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  Future<void> _showLocationPermissionDialog() async {
+    final shouldRequest = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Allow location access?'),
+        content: const Text(
+          'We need your location permission to show your current position on the map.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('No thanks'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Allow'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldRequest == true) {
+      await _askForLocationPermission();
+    }
+  }
+
+  Future<void> _askForLocationPermission() async {
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse) {
+          _useMockLocation = false;
+      await _getCurrentLocation();
+    }
+  }
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -545,8 +593,8 @@ class _HomePageState extends State<HomePage> {
               initialCameraPosition: AppConstants.initialCameraPosition,
               mapToolbarEnabled: false,
               zoomControlsEnabled: false,
-              myLocationEnabled: _currentPosition != null,
-              myLocationButtonEnabled: _currentPosition != null,
+              myLocationEnabled: true,
+              myLocationButtonEnabled: true,
               compassEnabled: false,
               rotateGesturesEnabled: true,
               tiltGesturesEnabled: true,
