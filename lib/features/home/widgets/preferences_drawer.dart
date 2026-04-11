@@ -24,8 +24,15 @@ class PreferencesDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Drawer(
+    return Material(
+      elevation: 12,
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(20),
+        bottomLeft: Radius.circular(20),
+      ),
+      clipBehavior: Clip.antiAlias,
+      color: Colors.white,
+      child: SizedBox(
         width: 300,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),

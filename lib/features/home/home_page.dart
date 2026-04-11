@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../shared/constants/app_constants.dart';
 import 'models/place_prediction.dart';
@@ -15,7 +16,6 @@ import 'widgets/preferences_drawer.dart';
 import 'widgets/search_card.dart';
 import 'widgets/settings_drawer.dart';
 import 'widgets/suggestions_list.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -29,9 +29,10 @@ class _HomePageState extends State<HomePage> {
   final GooglePlacesService _googlePlacesService = const GooglePlacesService();
   final LocationService _locationService = const LocationService();
   SupabaseClient get _sb => Supabase.instance.client;
+
   final TextEditingController _startController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
-  
+
   final FocusNode _startFocusNode = FocusNode();
   final FocusNode _destinationFocusNode = FocusNode();
 
@@ -41,6 +42,7 @@ class _HomePageState extends State<HomePage> {
   List<PlacePrediction> _suggestions = [];
   bool _isLoadingSuggestions = false;
   bool _showSuggestions = false;
+  bool _showPreferences = false;
   String? _sessionToken;
   SearchFieldType? _activeSearchField;
 
@@ -66,13 +68,11 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadSavedPreferences() async {
-  final prefs = await _loadPreferencesFromSupabase();
-  if (prefs != null && mounted) {
-    setState(() => _preferences = prefs);
+    final prefs = await _loadPreferencesFromSupabase();
+    if (prefs != null && mounted) {
+      setState(() => _preferences = prefs);
+    }
   }
-
-  
-}
 
   Future<void> _onGoPressed() async {
     final hasStart = _hasStartFilled;
@@ -139,12 +139,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
- @override
-void initState() {
-  super.initState();
-  _setupFocusListeners();
-  _loadSavedPreferences();
-}
+  @override
+  void initState() {
+    super.initState();
+    _setupFocusListeners();
+    _loadSavedPreferences();
+  }
 
   void _setupFocusListeners() {
     _startFocusNode.addListener(() {
@@ -190,40 +190,34 @@ void initState() {
     return DateTime.now().millisecondsSinceEpoch.toString();
   }
 
-// Future<void> _logoutAndSavePreferences() async {
-//   await _savePreferencesToSupabase();
-//   await Supabase.instance.client.auth.signOut();
-// }
+  Future<PreferencesData?> _loadPreferencesFromSupabase() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return null;
 
-Future<PreferencesData?> _loadPreferencesFromSupabase() async {
-  final user = Supabase.instance.client.auth.currentUser;
-  if (user == null) return null;
+    try {
+      final data = await Supabase.instance.client
+          .from('user_preferences')
+          .select('shopping,eating,park,placeofworship,added_duration')
+          .eq('user', user.id)
+          .maybeSingle();
 
-  try {
-    final data = await Supabase.instance.client
-        .from('user_preferences')
-        .select('shopping,eating,park,placeofworship,added_duration')
-        .eq('user', user.id)
-        .maybeSingle();
+      if (data == null) return null;
 
-    if (data == null) return null;
+      final map = (data as Map).cast<String, dynamic>();
 
-    final map = (data as Map).cast<String, dynamic>();
+      num _n(dynamic v, num fallback) => (v is num) ? v : fallback;
 
-    num _n(dynamic v, num fallback) => (v is num) ? v : fallback;
-
-    return PreferencesData(
-      shopping: _n(map['shopping'], 2).toDouble(),
-      cafes: _n(map['eating'], 2).toDouble(),
-      parks: _n(map['park'], 2).toDouble(),
-      shrines: _n(map['placeofworship'], 2).toDouble(),
-      addedDuration: _n(map['added_duration'], 100).toDouble(),
-    );
-  } catch (_) {
-    return null;
+      return PreferencesData(
+        shopping: _n(map['shopping'], 2).toDouble(),
+        cafes: _n(map['eating'], 2).toDouble(),
+        parks: _n(map['park'], 2).toDouble(),
+        shrines: _n(map['placeofworship'], 2).toDouble(),
+        addedDuration: _n(map['added_duration'], 100).toDouble(),
+      );
+    } catch (_) {
+      return null;
+    }
   }
-}
-
 
   Future<void> _savePreferencesToSupabase() async {
     final user = _sb.auth.currentUser;
@@ -248,23 +242,19 @@ Future<PreferencesData?> _loadPreferencesFromSupabase() async {
     };
 
     try {
-      await _sb.from('user_preferences').upsert(
-            payload,
-            onConflict: 'user',
-          );
+      await _sb.from('user_preferences').upsert(payload, onConflict: 'user');
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Preferences saved')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Preferences saved')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Save failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Save failed: $e')));
     }
   }
-
 
   Future<void> _getCurrentLocation() async {
     final result = await _locationService.getCurrentLocation(
@@ -513,26 +503,11 @@ Future<PreferencesData?> _loadPreferencesFromSupabase() async {
   }
 
   Future<void> _savePreferences() async {
-        Navigator.of(context).pop();
-       await _savePreferencesToSupabase();
+    setState(() {
+      _showPreferences = false;
+    });
+    await _savePreferencesToSupabase();
   }
-
-  // void _savePreferences() {
-  //   Navigator.of(context).pop();
-
-  //   ScaffoldMessenger.of(context).showSnackBar(
-  //     SnackBar(
-  //       content: Text(
-  //         'Preferences saved: '
-  //         'Shrines ${_preferences.shrines.round()}, '
-  //         'Shopping ${_preferences.shopping.round()}, '
-  //         'Cafes ${_preferences.cafes.round()}, '
-  //         'Parks ${_preferences.parks.round()}, '
-  //         'Duration ${_preferences.addedDuration.round()}',
-  //       ),
-  //     ),
-  //   );
-  // }
 
   void _dismissKeyboardAndSuggestions() {
     FocusScope.of(context).unfocus();
@@ -564,35 +539,6 @@ Future<PreferencesData?> _loadPreferencesFromSupabase() async {
       child: Scaffold(
         key: _scaffoldKey,
         drawer: const SettingsDrawer(),
-        endDrawer: PreferencesDrawer(
-          preferences: _preferences,
-          onShrinesChanged: (value) {
-            setState(() {
-              _preferences = _preferences.copyWith(shrines: value);
-            });
-          },
-          onShoppingChanged: (value) {
-            setState(() {
-              _preferences = _preferences.copyWith(shopping: value);
-            });
-          },
-          onCafesChanged: (value) {
-            setState(() {
-              _preferences = _preferences.copyWith(cafes: value);
-            });
-          },
-          onParksChanged: (value) {
-            setState(() {
-              _preferences = _preferences.copyWith(parks: value);
-            });
-          },
-          onAddedDurationChanged: (value) {
-            setState(() {
-              _preferences = _preferences.copyWith(addedDuration: value);
-            });
-          },
-          onSave: _savePreferences,
-        ),
         body: Stack(
           children: [
             GoogleMap(
@@ -632,12 +578,8 @@ Future<PreferencesData?> _loadPreferencesFromSupabase() async {
                       destinationFocusNode: _destinationFocusNode,
                       onStartChanged: (value) =>
                           _onSearchChanged(value, SearchFieldType.start),
-                      // onDestinationChanged: (value) =>
-                      //     _onSearchChanged(value, SearchFieldType.destination),
-                             onDestinationChanged: (value) => _onSearchChanged(
-                        value,
-                        SearchFieldType.destination,
-                      ),
+                      onDestinationChanged: (value) =>
+                          _onSearchChanged(value, SearchFieldType.destination),
                       onStartSubmitted: (value) =>
                           _goToPlace(value, SearchFieldType.start),
                       onDestinationSubmitted: (value) =>
@@ -730,6 +672,44 @@ Future<PreferencesData?> _loadPreferencesFromSupabase() async {
                   ),
                 ),
               ),
+
+            if (_showPreferences)
+              Positioned(
+                top: 200,
+                right: 0,
+                bottom: 20,
+                child: PreferencesDrawer(
+                  preferences: _preferences,
+                  onShrinesChanged: (value) {
+                    setState(() {
+                      _preferences = _preferences.copyWith(shrines: value);
+                    });
+                  },
+                  onShoppingChanged: (value) {
+                    setState(() {
+                      _preferences = _preferences.copyWith(shopping: value);
+                    });
+                  },
+                  onCafesChanged: (value) {
+                    setState(() {
+                      _preferences = _preferences.copyWith(cafes: value);
+                    });
+                  },
+                  onParksChanged: (value) {
+                    setState(() {
+                      _preferences = _preferences.copyWith(parks: value);
+                    });
+                  },
+                  onAddedDurationChanged: (value) {
+                    setState(() {
+                      _preferences = _preferences.copyWith(
+                        addedDuration: value,
+                      );
+                    });
+                  },
+                  onSave: _savePreferences,
+                ),
+              ),
           ],
         ),
         bottomNavigationBar: HomeBottomNavBar(
@@ -737,7 +717,9 @@ Future<PreferencesData?> _loadPreferencesFromSupabase() async {
             _scaffoldKey.currentState?.openDrawer();
           },
           onMenuTap: () {
-            _scaffoldKey.currentState?.openEndDrawer();
+            setState(() {
+              _showPreferences = !_showPreferences;
+            });
           },
         ),
       ),

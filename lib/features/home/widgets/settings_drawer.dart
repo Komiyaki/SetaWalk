@@ -26,10 +26,7 @@ class SettingsDrawer extends StatelessWidget {
               padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
               child: Text(
                 'Settings',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
               ),
             ),
             Padding(
@@ -38,10 +35,6 @@ class SettingsDrawer extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
                   children: [
