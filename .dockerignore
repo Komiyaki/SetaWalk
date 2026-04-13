@@ -1,0 +1,11 @@
+.dart_tool/
+.git/
+.github/
+build/
+ios/
+android/
+linux/
+macos/
+windows/
+*.jks
+*.keystore
