@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -10,12 +12,14 @@ import 'models/preferences_data.dart';
 import 'models/search_field_type.dart';
 import 'services/google_places_service.dart';
 import 'services/location_service.dart';
+import 'services/supabase_route_service.dart';
 import 'widgets/bottom_nav_bar.dart';
 import 'widgets/map_compass.dart';
 import 'widgets/preferences_drawer.dart';
 import 'widgets/search_card.dart';
 import 'widgets/settings_drawer.dart';
 import 'widgets/suggestions_list.dart';
+import 'widgets/turn_by_turn_panel.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -29,6 +33,7 @@ class _HomePageState extends State<HomePage> {
   final GooglePlacesService _googlePlacesService = const GooglePlacesService();
   final LocationService _locationService = const LocationService();
   SupabaseClient get _sb => Supabase.instance.client;
+  final SupabaseRouteService _supabaseRouteService = const SupabaseRouteService();
 
   final TextEditingController _startController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
@@ -51,7 +56,20 @@ class _HomePageState extends State<HomePage> {
   bool _useMockLocation = true;
 
   final Set<Marker> _markers = {};
+  final Set<Polyline> _polylines = {};
+  LatLng? _startLatLng;
+  LatLng? _destinationLatLng;
+  String? _routeDistance;
+  String? _routeDuration;
+  List<RouteStep> _routeSteps = [];
+  BitmapDescriptor? _startMarkerIcon;
+  BitmapDescriptor? _destinationMarkerIcon;
+  BitmapDescriptor? _selectedMarkerIcon;
+  BitmapDescriptor? _waypointMarkerIcon;
+  bool _markerIconsInitialized = false;
+  bool _isLoadingRoute = false;
   PreferencesData _preferences = const PreferencesData();
+  bool _isHandlingMapTap = false;
 
   double _cameraBearing = 0;
   bool _hasShownPermissionPopup = false;
@@ -75,81 +93,28 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _onGoPressed() async {
-    final hasStart = _hasStartFilled;
-    final hasDestination = _hasDestinationFilled;
-
-    if (!hasStart && !hasDestination) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please fill out both the starting point and destination.',
-          ),
-        ),
-      );
-      return;
-    }
-
-    if (!hasStart) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill out the starting point.')),
-      );
-      return;
-    }
-
-    if (!hasDestination) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill out the destination.')),
-      );
-      return;
-    }
-
-    final startMarker = _findMarkerById('start_place');
-    final destinationMarker = _findMarkerById('destination_place');
-
-    if (startMarker == null || destinationMarker == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not find both waypoint pins on the map yet.'),
-        ),
-      );
-      return;
-    }
-
-    final bounds = LatLngBounds(
-      southwest: LatLng(
-        startMarker.position.latitude < destinationMarker.position.latitude
-            ? startMarker.position.latitude
-            : destinationMarker.position.latitude,
-        startMarker.position.longitude < destinationMarker.position.longitude
-            ? startMarker.position.longitude
-            : destinationMarker.position.longitude,
-      ),
-      northeast: LatLng(
-        startMarker.position.latitude > destinationMarker.position.latitude
-            ? startMarker.position.latitude
-            : destinationMarker.position.latitude,
-        startMarker.position.longitude > destinationMarker.position.longitude
-            ? startMarker.position.longitude
-            : destinationMarker.position.longitude,
-      ),
-    );
-
-    await _mapController?.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 100),
-    );
-  }
-
   @override
   void initState() {
     super.initState();
     _setupFocusListeners();
     _loadSavedPreferences();
+  }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _hasShownPermissionPopup) return;
-      _hasShownPermissionPopup = true;
-      _showLocationPermissionDialog();
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_markerIconsInitialized) {
+      _markerIconsInitialized = true;
+      _initMarkerIcons();
+    }
+  }
+
+  void _initMarkerIcons() {
+    setState(() {
+      _startMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+      _destinationMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
+      _selectedMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+      _waypointMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
     });
   }
 
@@ -336,6 +301,15 @@ class _HomePageState extends State<HomePage> {
 
     setState(() {
       _markers.removeWhere((marker) => marker.markerId.value == markerId);
+      _polylines.clear();
+      _routeDistance = null;
+      _routeDuration = null;
+      _routeSteps = [];
+      if (fieldType == SearchFieldType.start) {
+        _startLatLng = null;
+      } else {
+        _destinationLatLng = null;
+      }
       _suggestions = [];
       _showSuggestions = false;
       _isLoadingSuggestions = false;
@@ -458,6 +432,7 @@ class _HomePageState extends State<HomePage> {
       ),
     );
 
+    final name = prediction.mainText;
     setState(() {
       _cameraBearing = 0;
 
@@ -465,25 +440,30 @@ class _HomePageState extends State<HomePage> {
           ? const MarkerId('start_place')
           : const MarkerId('destination_place');
 
+      if (selectedField == SearchFieldType.start) {
+        _startLatLng = latLng;
+      } else {
+        _destinationLatLng = latLng;
+      }
+
       _markers.removeWhere((marker) => marker.markerId == markerId);
 
       _markers.add(
         Marker(
           markerId: markerId,
           position: latLng,
-          infoWindow: InfoWindow(
-            title: selectedField == SearchFieldType.start
-                ? 'Start: ${prediction.mainText}'
-                : 'Destination: ${prediction.mainText}',
-          ),
           icon: selectedField == SearchFieldType.start
-              ? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen)
-              : BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+              ? (_startMarkerIcon ??
+                  BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen))
+              : (_destinationMarkerIcon ??
+                  BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed)),
+          onTap: () => _showLocationBottomSheet(name, latLng),
         ),
       );
     });
 
     _sessionToken = null;
+    _clearActiveRoute();
   }
 
   Future<void> _goToPlace(String query, SearchFieldType fieldType) async {
@@ -569,6 +549,356 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _onMapTap(LatLng latLng) async {
+    if (_showSuggestions) {
+      _dismissKeyboardAndSuggestions();
+      return;
+    }
+    if (_isHandlingMapTap) return;
+    _isHandlingMapTap = true;
+
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      _markers.removeWhere((m) => m.markerId.value == 'selected_place');
+      _markers.add(
+        Marker(
+          markerId: const MarkerId('selected_place'),
+          position: latLng,
+          icon: _selectedMarkerIcon ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        ),
+      );
+    });
+
+    final name = await _googlePlacesService.reverseGeocode(latLng);
+    if (!mounted) {
+      _isHandlingMapTap = false;
+      return;
+    }
+
+    final displayName =
+        name ??
+        '${latLng.latitude.toStringAsFixed(5)}, ${latLng.longitude.toStringAsFixed(5)}';
+
+    await _showLocationBottomSheet(displayName, latLng);
+
+    if (!mounted) {
+      _isHandlingMapTap = false;
+      return;
+    }
+
+    setState(() {
+      _markers.removeWhere((m) => m.markerId.value == 'selected_place');
+    });
+
+    _isHandlingMapTap = false;
+  }
+
+  Future<void> _showLocationBottomSheet(String name, LatLng position) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Row(
+              children: [
+                const Icon(Icons.location_on, color: Colors.grey, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    name,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      _setAsStartingPoint(name, position);
+                    },
+                    icon: const Icon(Icons.radio_button_checked),
+                    label: const Text('Starting Point'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.green,
+                      side: const BorderSide(color: Colors.green),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      _setAsDestination(name, position);
+                    },
+                    icon: const Icon(Icons.location_on),
+                    label: const Text('Destination'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _setAsStartingPoint(String name, LatLng position) {
+    setState(() {
+      _startController.text = name;
+      _startLatLng = position;
+      _markers
+        ..removeWhere(
+          (m) =>
+              m.markerId.value == 'start_place' ||
+              m.markerId.value == 'selected_place',
+        )
+        ..add(
+          Marker(
+            markerId: const MarkerId('start_place'),
+            position: position,
+            icon: _startMarkerIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+            onTap: () => _showLocationBottomSheet(name, position),
+          ),
+        );
+    });
+    _clearActiveRoute();
+  }
+
+  void _setAsDestination(String name, LatLng position) {
+    setState(() {
+      _destinationController.text = name;
+      _destinationLatLng = position;
+      _markers
+        ..removeWhere(
+          (m) =>
+              m.markerId.value == 'destination_place' ||
+              m.markerId.value == 'selected_place',
+        )
+        ..add(
+          Marker(
+            markerId: const MarkerId('destination_place'),
+            position: position,
+            icon: _destinationMarkerIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            onTap: () => _showLocationBottomSheet(name, position),
+          ),
+        );
+    });
+    _clearActiveRoute();
+  }
+
+  void _clearActiveRoute() {
+    setState(() {
+      _polylines.clear();
+      _routeDistance = null;
+      _routeDuration = null;
+      _routeSteps = [];
+      _markers.removeWhere((m) => m.markerId.value.startsWith('waypoint_'));
+    });
+  }
+
+  Future<void> _onGo() async {
+    final start = _startLatLng;
+    final destination = _destinationLatLng;
+    if (start == null || destination == null) return;
+
+    setState(() => _isLoadingRoute = true);
+    FocusScope.of(context).unfocus();
+
+    List<WaypointStop> waypointStops = [];
+    try {
+      waypointStops = await _supabaseRouteService.fetchWaypoints(
+        origin: start,
+        destination: destination,
+        preferences: _preferences,
+      );
+    } on SupabaseRouteException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not fetch waypoints: ${e.message}. Showing direct route.')),
+      );
+    } catch (_) {
+      // Backend not yet deployed — fall back to direct route silently.
+    }
+
+    if (!mounted) return;
+    await _updateRoute(waypointStops.map((w) => w.latLng).toList());
+
+    if (!mounted) return;
+
+    // Place orange star markers for each waypoint POI
+    if (waypointStops.isNotEmpty) {
+      setState(() {
+        _markers.removeWhere((m) => m.markerId.value.startsWith('waypoint_'));
+        for (var i = 0; i < waypointStops.length; i++) {
+          final stop = waypointStops[i];
+          _markers.add(
+            Marker(
+              markerId: MarkerId('waypoint_$i'),
+              position: stop.latLng,
+              icon: _waypointMarkerIcon ??
+                  BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+              onTap: () => _showLocationBottomSheet(stop.name, stop.latLng),
+            ),
+          );
+        }
+      });
+    }
+
+    setState(() => _isLoadingRoute = false);
+  }
+
+  Future<void> _updateRoute(List<LatLng> waypoints) async {
+    final start = _startLatLng;
+    final destination = _destinationLatLng;
+
+    if (start == null || destination == null) {
+      _clearActiveRoute();
+      return;
+    }
+
+    try {
+      final result = await _googlePlacesService.fetchWalkingRoute(
+        origin: start,
+        destination: destination,
+        waypoints: waypoints,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _routeDistance = result.distance;
+        _routeDuration = result.duration;
+        _routeSteps = result.steps;
+        _polylines
+          ..clear()
+          ..add(
+            Polyline(
+              polylineId: const PolylineId('walking_route'),
+              points: result.points,
+              color: const Color(0xFF1A73E8),
+              width: 5,
+            ),
+          );
+      });
+    } on GooglePlacesException catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoadingRoute = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Route error: ${e.message}')),
+      );
+      return;
+    }
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        min(start.latitude, destination.latitude),
+        min(start.longitude, destination.longitude),
+      ),
+      northeast: LatLng(
+        max(start.latitude, destination.latitude),
+        max(start.longitude, destination.longitude),
+      ),
+    );
+
+    await _mapController?.animateCamera(
+      CameraUpdate.newLatLngBounds(bounds, 80),
+    );
+  }
+
+  Future<void> _useCurrentLocation() async {
+    final position = _currentPosition;
+    if (position == null) return;
+
+    final latLng = LatLng(position.latitude, position.longitude);
+    final name =
+        await _googlePlacesService.reverseGeocode(latLng) ??
+        'Current Location';
+
+    if (!mounted) return;
+    _setAsStartingPoint(name, latLng);
+  }
+
+  void _swapLocations() {
+    final startText = _startController.text;
+    final destText = _destinationController.text;
+    final startLatLng = _startLatLng;
+    final destLatLng = _destinationLatLng;
+
+    _startController.text = destText;
+    _destinationController.text = startText;
+
+    setState(() {
+      _startLatLng = destLatLng;
+      _destinationLatLng = startLatLng;
+
+      _markers.removeWhere(
+        (m) =>
+            m.markerId.value == 'start_place' ||
+            m.markerId.value == 'destination_place',
+      );
+
+      if (destLatLng != null) {
+        _markers.add(
+          Marker(
+            markerId: const MarkerId('start_place'),
+            position: destLatLng,
+            icon: _startMarkerIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+            onTap: () => _showLocationBottomSheet(destText, destLatLng),
+          ),
+        );
+      }
+
+      if (startLatLng != null) {
+        _markers.add(
+          Marker(
+            markerId: const MarkerId('destination_place'),
+            position: startLatLng,
+            icon: _destinationMarkerIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            onTap: () => _showLocationBottomSheet(startText, startLatLng),
+          ),
+        );
+      }
+    });
+
+    _clearActiveRoute();
+  }
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -593,24 +923,27 @@ class _HomePageState extends State<HomePage> {
               initialCameraPosition: AppConstants.initialCameraPosition,
               mapToolbarEnabled: false,
               zoomControlsEnabled: false,
+              myLocationEnabled: _currentPosition != null,
+              myLocationButtonEnabled: false,
               myLocationEnabled: true,
               myLocationButtonEnabled: true,
               compassEnabled: false,
               rotateGesturesEnabled: true,
               tiltGesturesEnabled: true,
               markers: _markers,
+              polylines: _polylines,
               onMapCreated: (controller) async {
                 _mapController = controller;
                 await _getCurrentLocation();
               },
               onCameraMove: (position) {
                 if (!mounted) return;
-
                 setState(() {
                   _cameraBearing = position.bearing;
                 });
               },
               onTap: (_) => _dismissKeyboardAndSuggestions(),
+              onLongPress: _onMapTap,
             ),
 
             SafeArea(
@@ -635,6 +968,8 @@ class _HomePageState extends State<HomePage> {
                       onClearStart: () => _clearSearch(SearchFieldType.start),
                       onClearDestination: () =>
                           _clearSearch(SearchFieldType.destination),
+                      onUseCurrentLocation: _useCurrentLocation,
+                      onSwap: _swapLocations,
                     ),
                     if (_showSuggestions)
                       SuggestionsList(
@@ -647,48 +982,96 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
+            // Bottom-left: location button + compass
             SafeArea(
               child: Align(
                 alignment: Alignment.bottomLeft,
                 child: Padding(
                   padding: const EdgeInsets.only(left: 16, bottom: 90),
-                  child: MapCompass(
-                    bearing: _cameraBearing,
-                    onTap: _resetMapNorth,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_currentPosition != null)
+                        Material(
+                          color: Colors.white,
+                          elevation: 4,
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            onTap: () => _mapController?.animateCamera(
+                              CameraUpdate.newLatLng(
+                                LatLng(
+                                  _currentPosition!.latitude,
+                                  _currentPosition!.longitude,
+                                ),
+                              ),
+                            ),
+                            customBorder: const CircleBorder(),
+                            child: const SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: Icon(
+                                Icons.my_location,
+                                size: 24,
+                                color: Color(0xFF1A73E8),
+                              ),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                      MapCompass(
+                        bearing: _cameraBearing,
+                        onTap: _resetMapNorth,
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
 
-            SafeArea(
-              child: Align(
-                alignment: Alignment.bottomRight,
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 16, bottom: 90),
-                  child: SizedBox(
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: _onGoPressed,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 22),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 4,
-                      ),
-                      child: const Text(
-                        'Go',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+            // Bottom-right: Go button (visible when both endpoints are set)
+            if (_startLatLng != null && _destinationLatLng != null && _routeDistance == null)
+              Positioned(
+                bottom: 90,
+                right: 16,
+                child: ElevatedButton.icon(
+                  onPressed: _isLoadingRoute ? null : _onGo,
+                  icon: _isLoadingRoute
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.directions_walk),
+                  label: Text(_isLoadingRoute ? 'Loading…' : 'Go'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1A73E8),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 12,
                     ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 4,
                   ),
                 ),
               ),
-            ),
 
+            if (_routeDistance != null && _routeDuration != null)
+              Positioned(
+                bottom: 12,
+                left: 16,
+                right: 16,
+                child: TurnByTurnPanel(
+                  distance: _routeDistance!,
+                  duration: _routeDuration!,
+                  steps: _routeSteps,
+                ),
+              ),
             if (_isGettingLocation)
               const SafeArea(
                 child: Align(

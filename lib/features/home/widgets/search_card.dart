@@ -11,6 +11,8 @@ class SearchCard extends StatelessWidget {
   final ValueChanged<String> onDestinationSubmitted;
   final VoidCallback onClearStart;
   final VoidCallback onClearDestination;
+  final VoidCallback onUseCurrentLocation;
+  final VoidCallback onSwap;
 
   const SearchCard({
     super.key,
@@ -24,6 +26,8 @@ class SearchCard extends StatelessWidget {
     required this.onDestinationSubmitted,
     required this.onClearStart,
     required this.onClearDestination,
+    required this.onUseCurrentLocation,
+    required this.onSwap,
   });
 
   @override
@@ -54,13 +58,46 @@ class SearchCard extends StatelessWidget {
                         icon: const Icon(Icons.close),
                         onPressed: onClearStart,
                       )
-                    : null,
+                    : IconButton(
+                        icon: const Icon(Icons.my_location, size: 20),
+                        onPressed: onUseCurrentLocation,
+                        tooltip: 'Use current location',
+                      ),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 18),
               ),
             ),
           ),
-          const Divider(height: 1),
+          // Divider row with swap button
+          SizedBox(
+            height: 28,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                const Divider(height: 1),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Container(
+                      height: 26,
+                      width: 26,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(13),
+                        onTap: onSwap,
+                        child: const Icon(Icons.swap_vert, size: 16),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           SizedBox(
             height: 56,
             child: TextField(
