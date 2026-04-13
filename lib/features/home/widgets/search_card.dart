@@ -13,9 +13,6 @@ class SearchCard extends StatelessWidget {
   final VoidCallback onClearDestination;
   final VoidCallback onUseCurrentLocation;
   final VoidCallback onSwap;
-  final bool showGoButton;
-  final bool isLoadingRoute;
-  final VoidCallback? onGo;
 
   const SearchCard({
     super.key,
@@ -31,9 +28,6 @@ class SearchCard extends StatelessWidget {
     required this.onClearDestination,
     required this.onUseCurrentLocation,
     required this.onSwap,
-    this.showGoButton = false,
-    this.isLoadingRoute = false,
-    this.onGo,
   });
 
   @override
@@ -126,36 +120,6 @@ class SearchCard extends StatelessWidget {
               ),
             ),
           ),
-          if (showGoButton) ...[
-            const Divider(height: 1),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: TextButton.icon(
-                onPressed: isLoadingRoute ? null : onGo,
-                icon: isLoadingRoute
-                    ? const SizedBox(
-                        height: 16,
-                        width: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.directions_walk),
-                label: Text(isLoadingRoute ? 'Finding your route…' : 'Go'),
-                style: TextButton.styleFrom(
-                  foregroundColor: const Color(0xFF1A73E8),
-                  textStyle: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                  ),
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(
-                      bottom: Radius.circular(16),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );

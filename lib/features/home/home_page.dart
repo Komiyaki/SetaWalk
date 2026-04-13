@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -97,98 +96,13 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _initMarkerIcons() async {
-    final pixelRatio = MediaQuery.of(context).devicePixelRatio;
-    final icons = await Future.wait([
-      _createCircleMarker(
-        color: const Color(0xFF2E7D32),
-        icon: Icons.directions_walk,
-        pixelRatio: pixelRatio,
-      ),
-      _createCircleMarker(
-        color: const Color(0xFFC62828),
-        icon: Icons.flag,
-        pixelRatio: pixelRatio,
-      ),
-      _createCircleMarker(
-        color: const Color(0xFF1A73E8),
-        icon: Icons.add_location_alt,
-        pixelRatio: pixelRatio,
-      ),
-      _createCircleMarker(
-        color: const Color(0xFFE65100),
-        icon: Icons.star,
-        pixelRatio: pixelRatio,
-      ),
-    ]);
-
-    if (!mounted) return;
+  void _initMarkerIcons() {
     setState(() {
-      _startMarkerIcon = icons[0];
-      _destinationMarkerIcon = icons[1];
-      _selectedMarkerIcon = icons[2];
-      _waypointMarkerIcon = icons[3];
+      _startMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+      _destinationMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
+      _selectedMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
+      _waypointMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
     });
-  }
-
-  Future<BitmapDescriptor> _createCircleMarker({
-    required Color color,
-    required IconData icon,
-    required double pixelRatio,
-  }) async {
-    const logicalSize = 44.0;
-    final size = logicalSize * pixelRatio;
-    final center = Offset(size / 2, size / 2);
-    final radius = size / 2 - 2;
-
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-
-    // Shadow
-    canvas.drawCircle(
-      center + Offset(0, size * 0.04),
-      radius,
-      Paint()
-        ..color = Colors.black26
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, size * 0.08),
-    );
-
-    // Filled circle
-    canvas.drawCircle(center, radius, Paint()..color = color);
-
-    // White border
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = size * 0.06,
-    );
-
-    // Icon
-    final textPainter = TextPainter(textDirection: TextDirection.ltr)
-      ..text = TextSpan(
-        text: String.fromCharCode(icon.codePoint),
-        style: TextStyle(
-          fontSize: size * 0.48,
-          fontFamily: icon.fontFamily,
-          color: Colors.white,
-        ),
-      )
-      ..layout();
-    textPainter.paint(
-      canvas,
-      Offset(
-        (size - textPainter.width) / 2,
-        (size - textPainter.height) / 2,
-      ),
-    );
-
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(size.toInt(), size.toInt());
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(byteData!.buffer.asUint8List());
   }
 
   void _setupFocusListeners() {
@@ -956,7 +870,7 @@ class _HomePageState extends State<HomePage> {
               mapToolbarEnabled: false,
               zoomControlsEnabled: false,
               myLocationEnabled: _currentPosition != null,
-              myLocationButtonEnabled: _currentPosition != null,
+              myLocationButtonEnabled: false,
               compassEnabled: false,
               rotateGesturesEnabled: true,
               tiltGesturesEnabled: true,
@@ -972,7 +886,8 @@ class _HomePageState extends State<HomePage> {
                   _cameraBearing = position.bearing;
                 });
               },
-              onTap: _onMapTap,
+              onTap: (_) => _dismissKeyboardAndSuggestions(),
+              onLongPress: _onMapTap,
             ),
 
             SafeArea(
@@ -999,9 +914,6 @@ class _HomePageState extends State<HomePage> {
                           _clearSearch(SearchFieldType.destination),
                       onUseCurrentLocation: _useCurrentLocation,
                       onSwap: _swapLocations,
-                      showGoButton: _startLatLng != null && _destinationLatLng != null,
-                      isLoadingRoute: _isLoadingRoute,
-                      onGo: _onGo,
                     ),
                     if (_showSuggestions)
                       SuggestionsList(
@@ -1014,18 +926,84 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
+            // Bottom-left: location button + compass
             SafeArea(
               child: Align(
                 alignment: Alignment.bottomLeft,
                 child: Padding(
                   padding: const EdgeInsets.only(left: 16, bottom: 90),
-                  child: MapCompass(
-                    bearing: _cameraBearing,
-                    onTap: _resetMapNorth,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_currentPosition != null)
+                        Material(
+                          color: Colors.white,
+                          elevation: 4,
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            onTap: () => _mapController?.animateCamera(
+                              CameraUpdate.newLatLng(
+                                LatLng(
+                                  _currentPosition!.latitude,
+                                  _currentPosition!.longitude,
+                                ),
+                              ),
+                            ),
+                            customBorder: const CircleBorder(),
+                            child: const SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: Icon(
+                                Icons.my_location,
+                                size: 24,
+                                color: Color(0xFF1A73E8),
+                              ),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                      MapCompass(
+                        bearing: _cameraBearing,
+                        onTap: _resetMapNorth,
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
+
+            // Bottom-right: Go button (visible when both endpoints are set)
+            if (_startLatLng != null && _destinationLatLng != null && _routeDistance == null)
+              Positioned(
+                bottom: 90,
+                right: 16,
+                child: ElevatedButton.icon(
+                  onPressed: _isLoadingRoute ? null : _onGo,
+                  icon: _isLoadingRoute
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.directions_walk),
+                  label: Text(_isLoadingRoute ? 'Loading…' : 'Go'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1A73E8),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 22,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 4,
+                  ),
+                ),
+              ),
 
             if (_routeDistance != null && _routeDuration != null)
               Positioned(
