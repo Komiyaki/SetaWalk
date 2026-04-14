@@ -33,7 +33,8 @@ class _HomePageState extends State<HomePage> {
   final GooglePlacesService _googlePlacesService = const GooglePlacesService();
   final LocationService _locationService = const LocationService();
   SupabaseClient get _sb => Supabase.instance.client;
-  final SupabaseRouteService _supabaseRouteService = const SupabaseRouteService();
+  final SupabaseRouteService _supabaseRouteService =
+      const SupabaseRouteService();
 
   final TextEditingController _startController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
@@ -55,7 +56,7 @@ class _HomePageState extends State<HomePage> {
 
   Position? _currentPosition;
   bool _isGettingLocation = true;
-  final bool _useMockLocation = true;
+  final bool _useMockLocation = false;
 
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
@@ -102,10 +103,18 @@ class _HomePageState extends State<HomePage> {
 
   void _initMarkerIcons() {
     setState(() {
-      _startMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
-      _destinationMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
-      _selectedMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure);
-      _waypointMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+      _startMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
+        BitmapDescriptor.hueGreen,
+      );
+      _destinationMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
+        BitmapDescriptor.hueRed,
+      );
+      _selectedMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
+        BitmapDescriptor.hueAzure,
+      );
+      _waypointMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
+        BitmapDescriptor.hueOrange,
+      );
     });
   }
 
@@ -245,16 +254,18 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _resetMapNorth() async {
+    final bounds = await _mapController?.getVisibleRegion();
+    if (bounds != null) {}
+    final center = bounds != null
+        ? LatLng(
+            (bounds.northeast.latitude + bounds.southwest.latitude) / 2,
+            (bounds.northeast.longitude + bounds.southwest.longitude) / 2,
+          )
+        : AppConstants.initialCameraPosition.target;
+
     await _mapController?.animateCamera(
       CameraUpdate.newCameraPosition(
-        CameraPosition(
-          target: _currentPosition != null
-              ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
-              : AppConstants.initialCameraPosition.target,
-          zoom: 16,
-          bearing: 0,
-          tilt: 0,
-        ),
+        CameraPosition(target: center, zoom: 16, bearing: 0, tilt: 0),
       ),
     );
 
@@ -443,9 +454,13 @@ class _HomePageState extends State<HomePage> {
           position: latLng,
           icon: selectedField == SearchFieldType.start
               ? (_startMarkerIcon ??
-                  BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen))
+                    BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueGreen,
+                    ))
               : (_destinationMarkerIcon ??
-                  BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed)),
+                    BitmapDescriptor.defaultMarkerWithHue(
+                      BitmapDescriptor.hueRed,
+                    )),
           onTap: () => _showLocationBottomSheet(name, latLng),
         ),
       );
@@ -515,7 +530,8 @@ class _HomePageState extends State<HomePage> {
         Marker(
           markerId: const MarkerId('selected_place'),
           position: latLng,
-          icon: _selectedMarkerIcon ??
+          icon:
+              _selectedMarkerIcon ??
               BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
         ),
       );
@@ -638,8 +654,11 @@ class _HomePageState extends State<HomePage> {
           Marker(
             markerId: const MarkerId('start_place'),
             position: position,
-            icon: _startMarkerIcon ??
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+            icon:
+                _startMarkerIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueGreen,
+                ),
             onTap: () => _showLocationBottomSheet(name, position),
           ),
         );
@@ -661,7 +680,8 @@ class _HomePageState extends State<HomePage> {
           Marker(
             markerId: const MarkerId('destination_place'),
             position: position,
-            icon: _destinationMarkerIcon ??
+            icon:
+                _destinationMarkerIcon ??
                 BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
             onTap: () => _showLocationBottomSheet(name, position),
           ),
@@ -698,7 +718,11 @@ class _HomePageState extends State<HomePage> {
     } on SupabaseRouteException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not fetch waypoints: ${e.message}. Showing direct route.')),
+        SnackBar(
+          content: Text(
+            'Could not fetch waypoints: ${e.message}. Showing direct route.',
+          ),
+        ),
       );
     } catch (_) {
       // Backend not yet deployed — fall back to direct route silently.
@@ -719,8 +743,11 @@ class _HomePageState extends State<HomePage> {
             Marker(
               markerId: MarkerId('waypoint_$i'),
               position: stop.latLng,
-              icon: _waypointMarkerIcon ??
-                  BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+              icon:
+                  _waypointMarkerIcon ??
+                  BitmapDescriptor.defaultMarkerWithHue(
+                    BitmapDescriptor.hueOrange,
+                  ),
               onTap: () => _showLocationBottomSheet(stop.name, stop.latLng),
             ),
           );
@@ -787,9 +814,9 @@ class _HomePageState extends State<HomePage> {
     } on GooglePlacesException catch (e) {
       if (!mounted) return;
       setState(() => _isLoadingRoute = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Route error: ${e.message}')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Route error: ${e.message}')));
       return;
     }
 
@@ -815,8 +842,7 @@ class _HomePageState extends State<HomePage> {
 
     final latLng = LatLng(position.latitude, position.longitude);
     final name =
-        await _googlePlacesService.reverseGeocode(latLng) ??
-        'Current Location';
+        await _googlePlacesService.reverseGeocode(latLng) ?? 'Current Location';
 
     if (!mounted) return;
     _setAsStartingPoint(name, latLng);
@@ -846,8 +872,11 @@ class _HomePageState extends State<HomePage> {
           Marker(
             markerId: const MarkerId('start_place'),
             position: destLatLng,
-            icon: _startMarkerIcon ??
-                BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+            icon:
+                _startMarkerIcon ??
+                BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueGreen,
+                ),
             onTap: () => _showLocationBottomSheet(destText, destLatLng),
           ),
         );
@@ -858,7 +887,8 @@ class _HomePageState extends State<HomePage> {
           Marker(
             markerId: const MarkerId('destination_place'),
             position: startLatLng,
-            icon: _destinationMarkerIcon ??
+            icon:
+                _destinationMarkerIcon ??
                 BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
             onTap: () => _showLocationBottomSheet(startText, startLatLng),
           ),
