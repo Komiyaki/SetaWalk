@@ -925,15 +925,16 @@ class _HomePageState extends State<HomePage> {
                 _longPressStart = event.localPosition;
                 _longPressTimer?.cancel();
                 _longPressTimer = Timer(
-                  const Duration(milliseconds: 151),
+                  const Duration(milliseconds: 500),
                   () async {
                     if (!mounted) return;
                     final pos = _longPressStart;
                     if (pos == null) return;
+                    final ratio = MediaQuery.of(context).devicePixelRatio;
                     final latLng = await _mapController?.getLatLng(
                       ScreenCoordinate(
-                        x: pos.dx.round(),
-                        y: pos.dy.round(),
+                        x: (pos.dx * ratio).round(),
+                        y: (pos.dy * ratio).round(),
                       ),
                     );
                     if (latLng != null && mounted) _onMapTap(latLng);
