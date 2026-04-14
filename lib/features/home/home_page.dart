@@ -931,7 +931,7 @@ class _HomePageState extends State<HomePage> {
               child: Align(
                 alignment: Alignment.bottomLeft,
                 child: Padding(
-                  padding: const EdgeInsets.only(left: 16, bottom: 90),
+                  padding: const EdgeInsets.only(left: 16, bottom: 16),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -972,13 +972,15 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
-            // Bottom-right: Go button (visible when both endpoints are set)
-            if (_startLatLng != null && _destinationLatLng != null && _routeDistance == null)
+            // Bottom-right: Go button (always visible, disabled until both endpoints are set)
+            if (_routeDistance == null)
               Positioned(
-                bottom: 90,
+                bottom: 16,
                 right: 16,
                 child: ElevatedButton.icon(
-                  onPressed: _isLoadingRoute ? null : _onGo,
+                  onPressed: (_startLatLng != null && _destinationLatLng != null && !_isLoadingRoute)
+                      ? _onGo
+                      : null,
                   icon: _isLoadingRoute
                       ? const SizedBox(
                           width: 16,
@@ -993,6 +995,8 @@ class _HomePageState extends State<HomePage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF1A73E8),
                     foregroundColor: Colors.white,
+                    disabledBackgroundColor: Colors.grey.shade300,
+                    disabledForegroundColor: Colors.grey.shade500,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 22,
                       vertical: 12,
