@@ -104,7 +104,7 @@ class _HomePageState extends State<HomePage> {
   void _initMarkerIcons() {
     setState(() {
       _startMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
-        BitmapDescriptor.hueGreen,
+        BitmapDescriptor.hueAzure,
       );
       _destinationMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
         BitmapDescriptor.hueRed,
@@ -455,7 +455,7 @@ class _HomePageState extends State<HomePage> {
           icon: selectedField == SearchFieldType.start
               ? (_startMarkerIcon ??
                     BitmapDescriptor.defaultMarkerWithHue(
-                      BitmapDescriptor.hueGreen,
+                      BitmapDescriptor.hueAzure,
                     ))
               : (_destinationMarkerIcon ??
                     BitmapDescriptor.defaultMarkerWithHue(
@@ -494,6 +494,20 @@ class _HomePageState extends State<HomePage> {
       ).showSnackBar(const SnackBar(content: Text('No results found')));
     }
   }
+
+  Future<dynamic> goDijkstra() async {
+  final result = await _sb.rpc( 
+    'get_dijkstra', 
+    // params: points, 
+  );
+
+//   void handleButtonPress() async {
+//   final pathData = await goDijkstra();
+//   print(pathData); 
+// }
+
+  return result;
+}
 
   Future<void> _savePreferences() async {
     setState(() {
@@ -657,7 +671,7 @@ class _HomePageState extends State<HomePage> {
             icon:
                 _startMarkerIcon ??
                 BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueGreen,
+                  BitmapDescriptor.hueAzure,
                 ),
             onTap: () => _showLocationBottomSheet(name, position),
           ),
@@ -875,7 +889,7 @@ class _HomePageState extends State<HomePage> {
             icon:
                 _startMarkerIcon ??
                 BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueGreen,
+                  BitmapDescriptor.hueAzure,
                 ),
             onTap: () => _showLocationBottomSheet(destText, destLatLng),
           ),
