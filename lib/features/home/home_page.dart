@@ -43,6 +43,8 @@ class _HomePageState extends State<HomePage> {
 
   GoogleMapController? _mapController;
   Timer? _debounce;
+  Timer? _longPressTimer;
+  Offset? _longPressStart;
 
   List<PlacePrediction> _suggestions = [];
   bool _isLoadingSuggestions = false;
@@ -68,6 +70,8 @@ class _HomePageState extends State<HomePage> {
   BitmapDescriptor? _waypointMarkerIcon;
   bool _markerIconsInitialized = false;
   bool _isLoadingRoute = false;
+  bool _isNavigating = false;
+  String? _navigationDestination;
   PreferencesData _preferences = const PreferencesData();
   bool _isHandlingMapTap = false;
 
@@ -724,7 +728,27 @@ class _HomePageState extends State<HomePage> {
       });
     }
 
-    setState(() => _isLoadingRoute = false);
+    setState(() {
+      _isLoadingRoute = false;
+      _isNavigating = true;
+      _navigationDestination = _destinationController.text;
+    });
+  }
+
+  void _onEnd() {
+    setState(() {
+      _isNavigating = false;
+      _navigationDestination = null;
+      _startLatLng = null;
+      _destinationLatLng = null;
+      _markers.clear();
+      _polylines.clear();
+      _routeDistance = null;
+      _routeDuration = null;
+      _routeSteps = [];
+    });
+    _startController.clear();
+    _destinationController.clear();
   }
 
   Future<void> _updateRoute(List<LatLng> waypoints) async {
@@ -848,6 +872,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _longPressTimer?.cancel();
     _startController.dispose();
     _destinationController.dispose();
     _startFocusNode.dispose();
@@ -865,29 +890,66 @@ class _HomePageState extends State<HomePage> {
         drawer: const SettingsDrawer(),
         body: Stack(
           children: [
-            GoogleMap(
-              initialCameraPosition: AppConstants.initialCameraPosition,
-              mapToolbarEnabled: false,
-              zoomControlsEnabled: false,
-              myLocationEnabled: _currentPosition != null,
-              myLocationButtonEnabled: false,
-              compassEnabled: false,
-              rotateGesturesEnabled: true,
-              tiltGesturesEnabled: true,
-              markers: _markers,
-              polylines: _polylines,
-              onMapCreated: (controller) async {
-                _mapController = controller;
-                await _getCurrentLocation();
+            Listener(
+              onPointerDown: (event) {
+                _longPressStart = event.localPosition;
+                _longPressTimer?.cancel();
+                _longPressTimer = Timer(
+                  const Duration(milliseconds: 151),
+                  () async {
+                    if (!mounted) return;
+                    final pos = _longPressStart;
+                    if (pos == null) return;
+                    final latLng = await _mapController?.getLatLng(
+                      ScreenCoordinate(
+                        x: pos.dx.round(),
+                        y: pos.dy.round(),
+                      ),
+                    );
+                    if (latLng != null && mounted) _onMapTap(latLng);
+                  },
+                );
               },
-              onCameraMove: (position) {
-                if (!mounted) return;
-                setState(() {
-                  _cameraBearing = position.bearing;
-                });
+              onPointerMove: (event) {
+                if (_longPressStart != null) {
+                  final moved = (event.localPosition - _longPressStart!).distance;
+                  if (moved > 10) {
+                    _longPressTimer?.cancel();
+                    _longPressTimer = null;
+                  }
+                }
               },
-              onTap: (_) => _dismissKeyboardAndSuggestions(),
-              onLongPress: _onMapTap,
+              onPointerUp: (_) {
+                _longPressTimer?.cancel();
+                _longPressTimer = null;
+              },
+              onPointerCancel: (_) {
+                _longPressTimer?.cancel();
+                _longPressTimer = null;
+              },
+              child: GoogleMap(
+                initialCameraPosition: AppConstants.initialCameraPosition,
+                mapToolbarEnabled: false,
+                zoomControlsEnabled: false,
+                myLocationEnabled: _currentPosition != null,
+                myLocationButtonEnabled: false,
+                compassEnabled: false,
+                rotateGesturesEnabled: true,
+                tiltGesturesEnabled: true,
+                markers: _markers,
+                polylines: _polylines,
+                onMapCreated: (controller) async {
+                  _mapController = controller;
+                  await _getCurrentLocation();
+                },
+                onCameraMove: (position) {
+                  if (!mounted) return;
+                  setState(() {
+                    _cameraBearing = position.bearing;
+                  });
+                },
+                onTap: (_) => _dismissKeyboardAndSuggestions(),
+              ),
             ),
 
             SafeArea(
@@ -914,6 +976,8 @@ class _HomePageState extends State<HomePage> {
                           _clearSearch(SearchFieldType.destination),
                       onUseCurrentLocation: _useCurrentLocation,
                       onSwap: _swapLocations,
+                      isNavigating: _isNavigating,
+                      navigationDestination: _navigationDestination,
                     ),
                     if (_showSuggestions)
                       SuggestionsList(
@@ -921,6 +985,14 @@ class _HomePageState extends State<HomePage> {
                         suggestions: _suggestions,
                         onSuggestionTap: _selectSuggestion,
                       ),
+                    if (_routeDistance != null && _routeDuration != null) ...[
+                      const SizedBox(height: 8),
+                      TurnByTurnPanel(
+                        distance: _routeDistance!,
+                        duration: _routeDuration!,
+                        steps: _routeSteps,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -972,54 +1044,75 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
-            // Bottom-right: Go button (always visible, disabled until both endpoints are set)
-            if (_routeDistance == null)
-              Positioned(
-                bottom: 16,
-                right: 16,
-                child: ElevatedButton.icon(
-                  onPressed: (_startLatLng != null && _destinationLatLng != null && !_isLoadingRoute)
-                      ? _onGo
-                      : null,
-                  icon: _isLoadingRoute
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
+            // Bottom-right: Go / End button
+            Positioned(
+              bottom: 16,
+              right: 16,
+              child: _isNavigating
+                  ? OutlinedButton.icon(
+                      onPressed: _onEnd,
+                      icon: const Icon(Icons.stop, color: Colors.red),
+                      label: const Text('End', style: TextStyle(color: Colors.red)),
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        elevation: 6,
+                        side: const BorderSide(color: Colors.red, width: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 22,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    )
+                  : OutlinedButton.icon(
+                      onPressed: (_startLatLng != null && _destinationLatLng != null && !_isLoadingRoute)
+                          ? _onGo
+                          : null,
+                      icon: _isLoadingRoute
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Color(0xFF1A73E8),
+                              ),
+                            )
+                          : const Icon(Icons.directions_walk),
+                      label: Text(_isLoadingRoute ? 'Loading…' : 'Go'),
+                      style: ButtonStyle(
+                        backgroundColor: WidgetStateProperty.resolveWith((states) =>
+                          states.contains(WidgetState.disabled)
+                              ? Colors.grey.shade300
+                              : Colors.white,
+                        ),
+                        elevation: const WidgetStatePropertyAll(6),
+                        foregroundColor: WidgetStateProperty.resolveWith((states) =>
+                          states.contains(WidgetState.disabled)
+                              ? Colors.grey.shade400
+                              : const Color(0xFF1A73E8),
+                        ),
+                        side: WidgetStateProperty.resolveWith((states) =>
+                          BorderSide(
+                            color: states.contains(WidgetState.disabled)
+                                ? Colors.grey.shade400
+                                : const Color(0xFF1A73E8),
+                            width: 2,
                           ),
-                        )
-                      : const Icon(Icons.directions_walk),
-                  label: Text(_isLoadingRoute ? 'Loading…' : 'Go'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A73E8),
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey.shade300,
-                    disabledForegroundColor: Colors.grey.shade500,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 22,
-                      vertical: 12,
+                        ),
+                        padding: const WidgetStatePropertyAll(
+                          EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+                        ),
+                        shape: const WidgetStatePropertyAll(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.all(Radius.circular(12)),
+                          ),
+                        ),
+                      ),
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 4,
-                  ),
-                ),
-              ),
+            ),
 
-            if (_routeDistance != null && _routeDuration != null)
-              Positioned(
-                bottom: 12,
-                left: 16,
-                right: 16,
-                child: TurnByTurnPanel(
-                  distance: _routeDistance!,
-                  duration: _routeDuration!,
-                  steps: _routeSteps,
-                ),
-              ),
             if (_isGettingLocation)
               const SafeArea(
                 child: Align(
