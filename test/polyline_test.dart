@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:setawalk/features/home/models/polyline.dart';
 
 void main() {
-  const List<List<double>> testCoordinates = [
+  const List<List<double>> testCoordinates = [ //polyline test with the coords
     [35.642533, 139.670354],
     [35.6424108, 139.6709242],
     [35.6424038, 139.67096],
