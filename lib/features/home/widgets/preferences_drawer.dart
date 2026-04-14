@@ -34,64 +34,73 @@ class PreferencesDrawer extends StatelessWidget {
       color: Colors.white,
       child: SizedBox(
         width: 300,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Center(
-                child: Text(
-                  'Preferences',
-                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Center(
+                      child: Text(
+                        'Preferences',
+                        style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+                    _PreferenceSliderRow(
+                      label: 'Shrines',
+                      value: preferences.shrines,
+                      min: 0,
+                      max: 5,
+                      divisions: 5,
+                      onChanged: onShrinesChanged,
+                    ),
+                    const SizedBox(height: 20),
+                    _PreferenceSliderRow(
+                      label: 'Shopping',
+                      value: preferences.shopping,
+                      min: 0,
+                      max: 5,
+                      divisions: 5,
+                      onChanged: onShoppingChanged,
+                    ),
+                    const SizedBox(height: 20),
+                    _PreferenceSliderRow(
+                      label: 'Cafes',
+                      value: preferences.cafes,
+                      min: 0,
+                      max: 5,
+                      divisions: 5,
+                      onChanged: onCafesChanged,
+                    ),
+                    const SizedBox(height: 20),
+                    _PreferenceSliderRow(
+                      label: 'Parks',
+                      value: preferences.parks,
+                      min: 0,
+                      max: 5,
+                      divisions: 5,
+                      onChanged: onParksChanged,
+                    ),
+                    const SizedBox(height: 20),
+                    _PreferenceSliderRow(
+                      label: 'Added Duration',
+                      value: preferences.addedDuration,
+                      min: 50,
+                      max: 200,
+                      divisions: 15,
+                      onChanged: onAddedDurationChanged,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 28),
-              _PreferenceSliderRow(
-                label: 'Shrines',
-                value: preferences.shrines,
-                min: 0,
-                max: 5,
-                divisions: 5,
-                onChanged: onShrinesChanged,
-              ),
-              const SizedBox(height: 20),
-              _PreferenceSliderRow(
-                label: 'Shopping',
-                value: preferences.shopping,
-                min: 0,
-                max: 5,
-                divisions: 5,
-                onChanged: onShoppingChanged,
-              ),
-              const SizedBox(height: 20),
-              _PreferenceSliderRow(
-                label: 'Cafes',
-                value: preferences.cafes,
-                min: 0,
-                max: 5,
-                divisions: 5,
-                onChanged: onCafesChanged,
-              ),
-              const SizedBox(height: 20),
-              _PreferenceSliderRow(
-                label: 'Parks',
-                value: preferences.parks,
-                min: 0,
-                max: 5,
-                divisions: 5,
-                onChanged: onParksChanged,
-              ),
-              const SizedBox(height: 20),
-              _PreferenceSliderRow(
-                label: 'Added Duration',
-                value: preferences.addedDuration,
-                min: 50,
-                max: 200,
-                divisions: 15,
-                onChanged: onAddedDurationChanged,
-              ),
-              const Spacer(),
-              Center(
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              child: Center(
                 child: ElevatedButton(
                   onPressed: onSave,
                   style: ElevatedButton.styleFrom(
@@ -111,8 +120,8 @@ class PreferencesDrawer extends StatelessWidget {
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
