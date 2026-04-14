@@ -13,6 +13,8 @@ class SearchCard extends StatelessWidget {
   final VoidCallback onClearDestination;
   final VoidCallback onUseCurrentLocation;
   final VoidCallback onSwap;
+  final bool isNavigating;
+  final String? navigationDestination;
 
   const SearchCard({
     super.key,
@@ -28,6 +30,8 @@ class SearchCard extends StatelessWidget {
     required this.onClearDestination,
     required this.onUseCurrentLocation,
     required this.onSwap,
+    this.isNavigating = false,
+    this.navigationDestination,
   });
 
   @override
@@ -40,7 +44,30 @@ class SearchCard extends StatelessWidget {
           BoxShadow(blurRadius: 8, offset: Offset(0, 2), color: Colors.black12),
         ],
       ),
-      child: Stack(
+      child: isNavigating
+          ? Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: SizedBox(
+                height: 56,
+                child: Row(
+                  children: [
+                    const Icon(Icons.directions_walk, color: Color(0xFF1A73E8), size: 22),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Navigating to "${navigationDestination ?? 'destination'}"',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : Stack(
         children: [
           // Two fields with a thin divider — no extra spacing
           Column(
@@ -123,3 +150,4 @@ class SearchCard extends StatelessWidget {
     );
   }
 }
+

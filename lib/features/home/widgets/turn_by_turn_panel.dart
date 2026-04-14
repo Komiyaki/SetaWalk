@@ -83,7 +83,7 @@ class _TurnByTurnPanelState extends State<TurnByTurnPanel> {
                   ),
                   const Spacer(),
                   Icon(
-                    _expanded ? Icons.expand_more : Icons.expand_less,
+                    _expanded ? Icons.expand_less : Icons.expand_more,
                     size: 20,
                     color: Colors.grey,
                   ),
