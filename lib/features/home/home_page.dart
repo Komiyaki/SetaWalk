@@ -491,14 +491,19 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Future<dynamic> goDijkstra() async {
-  // final result = await supabase.rpc(
-  //   'get_dijkstra', 
-  //   params: points, 
-  // );
+  Future<dynamic> goDijkstra() async {
+  final result = await _sb.rpc( 
+    'get_dijkstra', 
+    // params: points, 
+  );
 
-//   return result;
+//   void handleButtonPress() async {
+//   final pathData = await goDijkstra();
+//   print(pathData); 
 // }
+
+  return result;
+}
 
   Future<void> _savePreferences() async {
     setState(() {
