@@ -3,8 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:meta/meta.dart';
 
+
 class MapDataProcessor {
- 
+  // so i think if i send you an array of these, you should be able to convert it to a LatLong array and then pass it as this.points in the PolyLine constructor
+  //   t seems like you can pass it an array of LatLng as this.points
+  // so hopefully you can construct it on your end idk though
+
   static Polyline createPolylineFromJson(
     String jsonString,
     String id, {
@@ -12,12 +16,12 @@ class MapDataProcessor {
     int width = 5,
     bool geodesic = true,
   }) {
+
     final List<dynamic> decodedData = jsonDecode(jsonString);
     final List<LatLng> points = decodedData
         .map((item) => LatLng.fromJson(item))
         .whereType<LatLng>()
         .toList();
-
 
     return Polyline(
       polylineId: id,
@@ -26,8 +30,8 @@ class MapDataProcessor {
       width: width,
       geodesic: geodesic,
     );
-  }
 
+  }
 
   static Future<Polyline> createPolylineFromAsset(
     String assetPath,
@@ -110,7 +114,6 @@ class LatLng {
 
   @override
   String toString() => 'LatLng($latitude, $longitude)';
-
 
   @override
   bool operator ==(Object other) =>
