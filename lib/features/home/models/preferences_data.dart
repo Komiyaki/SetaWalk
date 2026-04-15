@@ -13,6 +13,18 @@ class PreferencesData {
     this.addedDuration = 100,
   });
 
+  @override
+  bool operator ==(Object other) =>
+      other is PreferencesData &&
+      other.shrines == shrines &&
+      other.shopping == shopping &&
+      other.cafes == cafes &&
+      other.parks == parks &&
+      other.addedDuration == addedDuration;
+
+  @override
+  int get hashCode => Object.hash(shrines, shopping, cafes, parks, addedDuration);
+
   PreferencesData copyWith({
     double? shrines,
     double? shopping,

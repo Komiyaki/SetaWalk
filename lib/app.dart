@@ -47,6 +47,23 @@ class _SetaWalkAppState extends State<SetaWalkApp> {
       title: 'SetaWalk',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
+        snackBarTheme: SnackBarThemeData(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF2C2C2C),
+          contentTextStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 13.5,
+            fontWeight: FontWeight.w400,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(64),
+          ),
+          elevation: 6,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 80,
+            vertical: 100,
+          ),
+        ),
       ),
       home: const AuthGate(),
     );

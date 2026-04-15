@@ -74,6 +74,7 @@ class _HomePageState extends State<HomePage> {
   bool _isNavigating = false;
   String? _navigationDestination;
   PreferencesData _preferences = const PreferencesData();
+  PreferencesData? _preferencesSnapshot;
   bool _isHandlingMapTap = false;
 
   double _cameraBearing = 0;
@@ -195,11 +196,7 @@ class _HomePageState extends State<HomePage> {
     final user = _sb.auth.currentUser;
     if (user == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You must be logged in to save preferences'),
-        ),
-      );
+      _showSnackBar('You must be logged in to save preferences');
       return;
     }
 
@@ -217,14 +214,10 @@ class _HomePageState extends State<HomePage> {
       await _sb.from('user_preferences').upsert(payload, onConflict: 'user');
 
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Preferences saved')));
+      _showSnackBar('Preferences saved');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+      _showSnackBar('Save failed: $e');
     }
   }
 
@@ -376,9 +369,7 @@ class _HomePageState extends State<HomePage> {
         _isLoadingSuggestions = false;
       });
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.message)));
+      _showSnackBar(error.message);
     } catch (error) {
       if (!mounted) return;
 
@@ -388,9 +379,7 @@ class _HomePageState extends State<HomePage> {
         _isLoadingSuggestions = false;
       });
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Network error: $error')));
+      _showSnackBar('Network error: $error');
     }
   }
 
@@ -420,9 +409,7 @@ class _HomePageState extends State<HomePage> {
     if (!mounted) return;
 
     if (latLng == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not fetch place details')),
-      );
+      _showSnackBar('Could not fetch place details');
       return;
     }
 
@@ -489,9 +476,7 @@ class _HomePageState extends State<HomePage> {
     if (_suggestions.isNotEmpty) {
       await _selectSuggestion(_suggestions.first);
     } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('No results found')));
+      _showSnackBar('No results found');
     }
   }
 
@@ -510,10 +495,22 @@ class _HomePageState extends State<HomePage> {
 }
 
   Future<void> _savePreferences() async {
+    final unchanged = _preferencesSnapshot != null && _preferences == _preferencesSnapshot;
     setState(() {
       _showPreferences = false;
+      _preferencesSnapshot = null;
     });
+    if (unchanged) {
+      _showSnackBar('No changes made!');
+      return;
+    }
     await _savePreferencesToSupabase();
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Center(child: Text(message))),
+    );
   }
 
   void _dismissKeyboardAndSuggestions() {
@@ -731,13 +728,7 @@ class _HomePageState extends State<HomePage> {
       );
     } on SupabaseRouteException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not fetch waypoints: ${e.message}. Showing direct route.',
-          ),
-        ),
-      );
+      _showSnackBar('Could not fetch waypoints: ${e.message}. Showing direct route.');
     } catch (_) {
       // Backend not yet deployed — fall back to direct route silently.
     }
@@ -801,15 +792,18 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    List<LatLng> routePoints = [];
+
+    // Try Dijkstra first; fall back to Google Directions on failure.
     try {
-      final result = await _googlePlacesService.fetchWalkingRoute(
+      final result = await _supabaseRouteService.fetchDijkstraRoute(
         origin: start,
         destination: destination,
-        waypoints: waypoints,
       );
 
       if (!mounted) return;
 
+      routePoints = result.points;
       setState(() {
         _routeDistance = result.distance;
         _routeDuration = result.duration;
@@ -825,14 +819,44 @@ class _HomePageState extends State<HomePage> {
             ),
           );
       });
-    } on GooglePlacesException catch (e) {
-      if (!mounted) return;
-      setState(() => _isLoadingRoute = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Route error: ${e.message}')));
-      return;
+    } catch (_) {
+      // Dijkstra unavailable — fall back to Google Directions.
+      try {
+        final result = await _googlePlacesService.fetchWalkingRoute(
+          origin: start,
+          destination: destination,
+          waypoints: waypoints,
+        );
+
+        if (!mounted) return;
+
+        routePoints = result.points;
+        setState(() {
+          _routeDistance = result.distance;
+          _routeDuration = result.duration;
+          _routeSteps = result.steps;
+          _polylines
+            ..clear()
+            ..add(
+              Polyline(
+                polylineId: const PolylineId('walking_route'),
+                points: result.points,
+                color: const Color(0xFF1A73E8),
+                width: 5,
+              ),
+            );
+        });
+      } on GooglePlacesException catch (e) {
+        if (!mounted) return;
+        setState(() => _isLoadingRoute = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Route error: ${e.message}')));
+        return;
+      }
     }
+
+    if (routePoints.isEmpty) return;
 
     final bounds = LatLngBounds(
       southwest: LatLng(
@@ -939,15 +963,16 @@ class _HomePageState extends State<HomePage> {
                 _longPressStart = event.localPosition;
                 _longPressTimer?.cancel();
                 _longPressTimer = Timer(
-                  const Duration(milliseconds: 151),
+                  const Duration(milliseconds: 500),
                   () async {
                     if (!mounted) return;
                     final pos = _longPressStart;
                     if (pos == null) return;
+                    final ratio = MediaQuery.of(context).devicePixelRatio;
                     final latLng = await _mapController?.getLatLng(
                       ScreenCoordinate(
-                        x: pos.dx.round(),
-                        y: pos.dy.round(),
+                        x: (pos.dx * ratio).round(),
+                        y: (pos.dy * ratio).round(),
                       ),
                     );
                     if (latLng != null && mounted) _onMapTap(latLng);
@@ -1042,15 +1067,29 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
-            // Bottom-left: location button + compass
+            // Bottom-left: compass (top) + location button (bottom)
             SafeArea(
               child: Align(
                 alignment: Alignment.bottomLeft,
                 child: Padding(
-                  padding: const EdgeInsets.only(left: 16, bottom: 16),
+                  padding: const EdgeInsets.only(left: 16, bottom: 108),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Compass — fades in when map is off-north, hidden when north
+                      IgnorePointer(
+                        ignoring: _cameraBearing.abs() < 0.5,
+                        child: AnimatedOpacity(
+                          opacity: _cameraBearing.abs() < 0.5 ? 0.0 : 1.0,
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeInOut,
+                          child: MapCompass(
+                            bearing: _cameraBearing,
+                            onTap: _resetMapNorth,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       if (_currentPosition != null)
                         Material(
                           color: Colors.white,
@@ -1077,84 +1116,49 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ),
                         ),
-                      const SizedBox(height: 8),
-                      MapCompass(
-                        bearing: _cameraBearing,
-                        onTap: _resetMapNorth,
-                      ),
                     ],
                   ),
                 ),
               ),
             ),
 
-            // Bottom-right: Go / End button
+            // Floating pill nav bar
             Positioned(
-              bottom: 16,
-              right: 16,
-              child: _isNavigating
-                  ? OutlinedButton.icon(
-                      onPressed: _onEnd,
-                      icon: const Icon(Icons.stop, color: Colors.red),
-                      label: const Text('End', style: TextStyle(color: Colors.red)),
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        elevation: 6,
-                        side: const BorderSide(color: Colors.red, width: 2),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 22,
-                          vertical: 12,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    )
-                  : OutlinedButton.icon(
-                      onPressed: (_startLatLng != null && _destinationLatLng != null && !_isLoadingRoute)
-                          ? _onGo
-                          : null,
-                      icon: _isLoadingRoute
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Color(0xFF1A73E8),
-                              ),
-                            )
-                          : const Icon(Icons.directions_walk),
-                      label: Text(_isLoadingRoute ? 'Loading…' : 'Go'),
-                      style: ButtonStyle(
-                        backgroundColor: WidgetStateProperty.resolveWith((states) =>
-                          states.contains(WidgetState.disabled)
-                              ? Colors.grey.shade300
-                              : Colors.white,
-                        ),
-                        elevation: const WidgetStatePropertyAll(6),
-                        foregroundColor: WidgetStateProperty.resolveWith((states) =>
-                          states.contains(WidgetState.disabled)
-                              ? Colors.grey.shade400
-                              : const Color(0xFF1A73E8),
-                        ),
-                        side: WidgetStateProperty.resolveWith((states) =>
-                          BorderSide(
-                            color: states.contains(WidgetState.disabled)
-                                ? Colors.grey.shade400
-                                : const Color(0xFF1A73E8),
-                            width: 2,
-                          ),
-                        ),
-                        padding: const WidgetStatePropertyAll(
-                          EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                        ),
-                        shape: const WidgetStatePropertyAll(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.all(Radius.circular(12)),
-                          ),
-                        ),
-                      ),
-                    ),
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: HomeBottomNavBar(
+                canGo: _startLatLng != null &&
+                    _destinationLatLng != null &&
+                    !_isLoadingRoute &&
+                    !_isNavigating,
+                isNavigating: _isNavigating,
+                isLoadingRoute: _isLoadingRoute,
+                onSettingsTap: () => _scaffoldKey.currentState?.openDrawer(),
+                onGoTap: _onGo,
+                onStopTap: _onEnd,
+                onPreferencesTap: () {
+                  if (_showPreferences) {
+                    // Closing without save — restore snapshot
+                    final hadChanges = _preferencesSnapshot != null &&
+                        _preferences != _preferencesSnapshot;
+                    setState(() {
+                      if (_preferencesSnapshot != null) {
+                        _preferences = _preferencesSnapshot!;
+                        _preferencesSnapshot = null;
+                      }
+                      _showPreferences = false;
+                    });
+                    if (hadChanges) _showSnackBar('Preferences not saved! Click save to keep changes.');
+                  } else {
+                    // Opening — snapshot current state
+                    setState(() {
+                      _preferencesSnapshot = _preferences;
+                      _showPreferences = true;
+                    });
+                  }
+                },
+              ),
             ),
 
             if (_isGettingLocation)
@@ -1190,10 +1194,30 @@ class _HomePageState extends State<HomePage> {
               ),
 
             if (_showPreferences)
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () {
+                    final hadChanges = _preferencesSnapshot != null &&
+                        _preferences != _preferencesSnapshot;
+                    setState(() {
+                      if (_preferencesSnapshot != null) {
+                        _preferences = _preferencesSnapshot!;
+                        _preferencesSnapshot = null;
+                      }
+                      _showPreferences = false;
+                    });
+                    if (hadChanges) _showSnackBar('Preferences not saved');
+                  },
+                ),
+              ),
+
+            if (_showPreferences)
               Positioned(
                 top: 200,
                 right: 0,
-                bottom: 20,
+                // Aligns with the bottom edge of the location button
+                bottom: MediaQuery.of(context).padding.bottom + 108,
                 child: PreferencesDrawer(
                   preferences: _preferences,
                   onShrinesChanged: (value) {
@@ -1227,16 +1251,6 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
           ],
-        ),
-        bottomNavigationBar: HomeBottomNavBar(
-          onSettingsTap: () {
-            _scaffoldKey.currentState?.openDrawer();
-          },
-          onMenuTap: () {
-            setState(() {
-              _showPreferences = !_showPreferences;
-            });
-          },
         ),
       ),
     );
