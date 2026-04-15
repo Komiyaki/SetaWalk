@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
@@ -6,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../shared/constants/env.dart';
 import '../models/preferences_data.dart';
+import 'google_places_service.dart';
 
 class WaypointStop {
   final LatLng latLng;
@@ -93,4 +95,219 @@ class SupabaseRouteException implements Exception {
 
   @override
   String toString() => message;
+}
+
+// ---------------------------------------------------------------------------
+// Dijkstra route + turn detection
+// ---------------------------------------------------------------------------
+
+class DijkstraRouteResult {
+  final List<LatLng> points;
+  final String distance;
+  final String duration;
+  final List<RouteStep> steps;
+
+  const DijkstraRouteResult({
+    required this.points,
+    required this.distance,
+    required this.duration,
+    required this.steps,
+  });
+}
+
+extension DijkstraRoute on SupabaseRouteService {
+  /// Calls the Supabase `get_dijkstra` RPC and returns a route with
+  /// geometrically detected turn-by-turn steps.
+  Future<DijkstraRouteResult> fetchDijkstraRoute({
+    required LatLng origin,
+    required LatLng destination,
+  }) async {
+    final dynamic raw = await Supabase.instance.client.rpc(
+      'get_dijkstra',
+      params: {
+        'a_latitude': origin.latitude,
+        'a_longitude': origin.longitude,
+        'b_latitude': destination.latitude,
+        'b_longitude': destination.longitude,
+      },
+    );
+
+    if (raw == null) {
+      throw const SupabaseRouteException('get_dijkstra returned null');
+    }
+
+    final list = raw as List<dynamic>;
+    if (list.isEmpty) {
+      throw const SupabaseRouteException('get_dijkstra returned an empty path');
+    }
+
+    // Server returns [[lat, lng], ...]
+    final points = list.map((e) {
+      final pair = e as List<dynamic>;
+      return LatLng(
+        (pair[0] as num).toDouble(),
+        (pair[1] as num).toDouble(),
+      );
+    }).toList();
+
+    final totalMeters = _totalDistance(points);
+    final steps = _detectTurns(points);
+
+    return DijkstraRouteResult(
+      points: points,
+      distance: _formatDistance(totalMeters),
+      duration: _formatDuration(totalMeters),
+      steps: steps,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Geometry helpers (module-private top-level functions)
+// ---------------------------------------------------------------------------
+
+/// Haversine distance in metres between two points.
+double _haversineMeters(LatLng a, LatLng b) {
+  const r = 6371000.0;
+  final dLat = _toRad(b.latitude - a.latitude);
+  final dLng = _toRad(b.longitude - a.longitude);
+  final sinDLat = sin(dLat / 2);
+  final sinDLng = sin(dLng / 2);
+  final h = sinDLat * sinDLat +
+      cos(_toRad(a.latitude)) * cos(_toRad(b.latitude)) * sinDLng * sinDLng;
+  return 2 * r * asin(sqrt(h));
+}
+
+double _toRad(double deg) => deg * pi / 180;
+
+/// Forward bearing A→B in degrees [0, 360).
+double _bearing(LatLng a, LatLng b) {
+  final lat1 = _toRad(a.latitude);
+  final lat2 = _toRad(b.latitude);
+  final dLng = _toRad(b.longitude - a.longitude);
+  final y = sin(dLng) * cos(lat2);
+  final x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLng);
+  return (atan2(y, x) * 180 / pi + 360) % 360;
+}
+
+/// Signed bearing change in (-180, 180]. Positive = right, negative = left.
+double _bearingDelta(double inBearing, double outBearing) {
+  return ((outBearing - inBearing + 540) % 360) - 180;
+}
+
+double _totalDistance(List<LatLng> pts) {
+  double d = 0;
+  for (int i = 0; i < pts.length - 1; i++) {
+    d += _haversineMeters(pts[i], pts[i + 1]);
+  }
+  return d;
+}
+
+String _formatDistance(double meters) {
+  if (meters >= 1000) {
+    return '${(meters / 1000).toStringAsFixed(1)} km';
+  }
+  return '${meters.round()} m';
+}
+
+String _formatDuration(double meters) {
+  // Walking speed ≈ 5 km/h = 83.33 m/min
+  final minutes = (meters / 83.33).round();
+  if (minutes < 60) return '$minutes min';
+  final h = minutes ~/ 60;
+  final m = minutes % 60;
+  return m == 0 ? '$h hr' : '$h hr $m min';
+}
+
+String _compassDirection(double bearing) {
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  return dirs[((bearing + 22.5) / 45).floor() % 8];
+}
+
+/// Convert a list of coordinates into turn-by-turn [RouteStep]s by analysing
+/// heading changes. Steps are merged into segments so that minor wiggles
+/// (< 25°) don't generate spurious turns.
+List<RouteStep> _detectTurns(List<LatLng> points) {
+  if (points.length < 2) return [];
+
+  // Pre-compute per-segment bearings.
+  final bearings = <double>[
+    for (int i = 0; i < points.length - 1; i++) _bearing(points[i], points[i + 1]),
+  ];
+
+  final steps = <RouteStep>[];
+  double segmentMeters = 0;
+
+  // First step: head in the initial direction.
+  void addStep(String instruction, String? maneuver, double meters) {
+    steps.add(RouteStep(
+      instruction: instruction,
+      distance: _formatDistance(meters),
+      maneuver: maneuver,
+    ));
+  }
+
+  // Walk through bearing transitions.
+  for (int i = 1; i < bearings.length; i++) {
+    segmentMeters += _haversineMeters(points[i - 1], points[i]);
+
+    final delta = _bearingDelta(bearings[i - 1], bearings[i]);
+    final absDelta = delta.abs();
+
+    if (absDelta < 25) continue; // not a real turn
+
+    // Emit a step for the segment just completed.
+    if (steps.isEmpty) {
+      addStep(
+        'Head ${_compassDirection(bearings[0])}',
+        'straight',
+        segmentMeters,
+      );
+    } else {
+      addStep(
+        'Continue ${_compassDirection(bearings[i - 1])}',
+        'straight',
+        segmentMeters,
+      );
+    }
+
+    // Emit the turn itself (zero distance — distance counted in next segment).
+    String maneuver;
+    String instruction;
+    if (delta > 120) {
+      maneuver = 'turn-sharp-right';
+      instruction = 'Turn sharp right';
+    } else if (delta > 45) {
+      maneuver = 'turn-right';
+      instruction = 'Turn right';
+    } else if (delta > 25) {
+      maneuver = 'turn-slight-right';
+      instruction = 'Turn slight right';
+    } else if (delta < -120) {
+      maneuver = 'turn-sharp-left';
+      instruction = 'Turn sharp left';
+    } else if (delta < -45) {
+      maneuver = 'turn-left';
+      instruction = 'Turn left';
+    } else {
+      maneuver = 'turn-slight-left';
+      instruction = 'Turn slight left';
+    }
+    steps.add(RouteStep(instruction: instruction, distance: '', maneuver: maneuver));
+
+    segmentMeters = 0;
+  }
+
+  // Final segment leading to destination.
+  segmentMeters += _haversineMeters(points[points.length - 2], points.last);
+  if (steps.isEmpty) {
+    addStep(
+      'Head ${_compassDirection(bearings[0])}',
+      'straight',
+      segmentMeters,
+    );
+  }
+  addStep('Arrive at destination', null, segmentMeters);
+
+  return steps;
 }

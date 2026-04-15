@@ -763,15 +763,18 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    List<LatLng> routePoints = [];
+
+    // Try Dijkstra first; fall back to Google Directions on failure.
     try {
-      final result = await _googlePlacesService.fetchWalkingRoute(
+      final result = await _supabaseRouteService.fetchDijkstraRoute(
         origin: start,
         destination: destination,
-        waypoints: waypoints,
       );
 
       if (!mounted) return;
 
+      routePoints = result.points;
       setState(() {
         _routeDistance = result.distance;
         _routeDuration = result.duration;
@@ -787,14 +790,44 @@ class _HomePageState extends State<HomePage> {
             ),
           );
       });
-    } on GooglePlacesException catch (e) {
-      if (!mounted) return;
-      setState(() => _isLoadingRoute = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Route error: ${e.message}')));
-      return;
+    } catch (_) {
+      // Dijkstra unavailable — fall back to Google Directions.
+      try {
+        final result = await _googlePlacesService.fetchWalkingRoute(
+          origin: start,
+          destination: destination,
+          waypoints: waypoints,
+        );
+
+        if (!mounted) return;
+
+        routePoints = result.points;
+        setState(() {
+          _routeDistance = result.distance;
+          _routeDuration = result.duration;
+          _routeSteps = result.steps;
+          _polylines
+            ..clear()
+            ..add(
+              Polyline(
+                polylineId: const PolylineId('walking_route'),
+                points: result.points,
+                color: const Color(0xFF1A73E8),
+                width: 5,
+              ),
+            );
+        });
+      } on GooglePlacesException catch (e) {
+        if (!mounted) return;
+        setState(() => _isLoadingRoute = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Route error: ${e.message}')));
+        return;
+      }
     }
+
+    if (routePoints.isEmpty) return;
 
     final bounds = LatLngBounds(
       southwest: LatLng(
