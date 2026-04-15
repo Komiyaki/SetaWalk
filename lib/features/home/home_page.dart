@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -480,19 +481,39 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<dynamic> goDijkstra() async {
-  final result = await _sb.rpc( 
-    'get_dijkstra', 
-    // params: points, 
-  );
+  // Future<dynamic> goDijkstra() async {
+  //   final start = _startLatLng;
+  //   final destination = _destinationLatLng;
+  //   if (start == null || destination == null) {
+  //     throw StateError('Missing start/destination');
+  //   }
 
-//   void handleButtonPress() async {
-//   final pathData = await goDijkstra();
-//   print(pathData); 
-// }
+  //   return goDijkstraRpc(
+  //     rpc: (functionName, {params}) async =>
+  //         await _sb.rpc(functionName, params: params),
+  //     origin: start,
+  //     destination: destination,
+  //   );
+  // }
 
-  return result;
-}
+  // List<LatLng> _decodeDijkstraPoints(String jsonString) {
+  //   final decoded = jsonDecode(jsonString);
+  //   if (decoded is! List) return const [];
+
+  //   return decoded
+  //       .map<LatLng?>((item) {
+  //         if (item is List && item.length == 2) {
+  //           final a = item[0];
+  //           final b = item[1];
+  //           if (a is num && b is num) {
+  //             return LatLng(a.toDouble(), b.toDouble());
+  //           }
+  //         }
+  //         return null;
+  //       })
+  //       .whereType<LatLng>()
+  //       .toList();
+  // }
 
   Future<void> _savePreferences() async {
     final unchanged = _preferencesSnapshot != null && _preferences == _preferencesSnapshot;
@@ -712,6 +733,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _onGo() async {
+    // _showSnackBar('go button tapped');
     final start = _startLatLng;
     final destination = _destinationLatLng;
     if (start == null || destination == null) return;
@@ -719,46 +741,82 @@ class _HomePageState extends State<HomePage> {
     setState(() => _isLoadingRoute = true);
     FocusScope.of(context).unfocus();
 
-    List<WaypointStop> waypointStops = [];
     try {
-      waypointStops = await _supabaseRouteService.fetchWaypoints(
+      // print('Dijkstra starting');
+      final result = await _supabaseRouteService.fetchDijkstraRoute(
         origin: start,
         destination: destination,
-        preferences: _preferences,
       );
-    } on SupabaseRouteException catch (e) {
+        _showSnackBar(
+        'Dijkstra ran',
+      );
+      print('Dijkstra function called, calculating route based on preferences...');
       if (!mounted) return;
-      _showSnackBar('Could not fetch waypoints: ${e.message}. Showing direct route.');
-    } catch (_) {
-      // Backend not yet deployed — fall back to direct route silently.
-    }
-
-    if (!mounted) return;
-    await _updateRoute(waypointStops.map((w) => w.latLng).toList());
-
-    if (!mounted) return;
-
-    // Place orange star markers for each waypoint POI
-    if (waypointStops.isNotEmpty) {
       setState(() {
-        _markers.removeWhere((m) => m.markerId.value.startsWith('waypoint_'));
-        for (var i = 0; i < waypointStops.length; i++) {
-          final stop = waypointStops[i];
-          _markers.add(
-            Marker(
-              markerId: MarkerId('waypoint_$i'),
-              position: stop.latLng,
-              icon:
-                  _waypointMarkerIcon ??
-                  BitmapDescriptor.defaultMarkerWithHue(
-                    BitmapDescriptor.hueOrange,
-                  ),
-              onTap: () => _showLocationBottomSheet(stop.name, stop.latLng),
+        _routeDistance = result.distance;
+        _routeDuration = result.duration;
+        _routeSteps = result.steps;
+        _polylines
+          ..clear()
+          ..add(
+            Polyline(
+              polylineId: const PolylineId('walking_route'),
+              points: result.points,
+              color: const Color(0xFF1A73E8),
+              width: 5,
             ),
           );
-        }
+        _isLoadingRoute = false;
+        _isNavigating = true;
+        _navigationDestination = _destinationController.text;
       });
+      return;
+    } catch (e) {
+      _showSnackBar('Reverting to original path...');
     }
+
+    // List<WaypointStop> waypointStops = [];
+    // try {
+    //   waypointStops = await _supabaseRouteService.fetchWaypoints(
+    //     origin: start,
+    //     destination: destination,
+    //     preferences: _preferences,
+    //   );
+    // } on SupabaseRouteException catch (e) {
+    //   if (!mounted) return;
+    //   _showSnackBar(
+    //     'Could not fetch waypoints: ${e.message}. Showing direct route.',
+    //   );
+    // } catch (_) {
+    //   // Backend not yet deployed — fall back to direct route silently.
+    // }
+
+    // if (!mounted) return;
+    // await _updateRoute(waypointStops.map((w) => w.latLng).toList());
+
+    // if (!mounted) return;
+
+    // // Place orange star markers for each waypoint POI
+    // if (waypointStops.isNotEmpty) {
+    //   setState(() {
+    //     _markers.removeWhere((m) => m.markerId.value.startsWith('waypoint_'));
+    //     for (var i = 0; i < waypointStops.length; i++) {
+    //       final stop = waypointStops[i];
+    //       _markers.add(
+    //         Marker(
+    //           markerId: MarkerId('waypoint_$i'),
+    //           position: stop.latLng,
+    //           icon:
+    //               _waypointMarkerIcon ??
+    //               BitmapDescriptor.defaultMarkerWithHue(
+    //                 BitmapDescriptor.hueOrange,
+    //               ),
+    //           onTap: () => _showLocationBottomSheet(stop.name, stop.latLng),
+    //         ),
+    //       );
+    //     }
+    //   });
+    // }
 
     setState(() {
       _isLoadingRoute = false;
@@ -783,96 +841,32 @@ class _HomePageState extends State<HomePage> {
     _destinationController.clear();
   }
 
-  Future<void> _updateRoute(List<LatLng> waypoints) async {
-    final start = _startLatLng;
-    final destination = _destinationLatLng;
+  // Future<void> _updateRoute(List<LatLng> waypoints) async {
+  //   final start = _startLatLng;
+  //   final destination = _destinationLatLng;
 
-    if (start == null || destination == null) {
-      _clearActiveRoute();
-      return;
-    }
+  //   if (start == null || destination == null) {
+  //     _clearActiveRoute();
+  //     return;
+  //   }
 
-    List<LatLng> routePoints = [];
+  //   if (routePoints.isEmpty) return;
 
-    // Try Dijkstra first; fall back to Google Directions on failure.
-    try {
-      final result = await _supabaseRouteService.fetchDijkstraRoute(
-        origin: start,
-        destination: destination,
-      );
+  //   final bounds = LatLngBounds(
+  //     southwest: LatLng(
+  //       min(start.latitude, destination.latitude),
+  //       min(start.longitude, destination.longitude),
+  //     ),
+  //     northeast: LatLng(
+  //       max(start.latitude, destination.latitude),
+  //       max(start.longitude, destination.longitude),
+  //     ),
+  //   );
 
-      if (!mounted) return;
-
-      routePoints = result.points;
-      setState(() {
-        _routeDistance = result.distance;
-        _routeDuration = result.duration;
-        _routeSteps = result.steps;
-        _polylines
-          ..clear()
-          ..add(
-            Polyline(
-              polylineId: const PolylineId('walking_route'),
-              points: result.points,
-              color: const Color(0xFF1A73E8),
-              width: 5,
-            ),
-          );
-      });
-    } catch (_) {
-      // Dijkstra unavailable — fall back to Google Directions.
-      try {
-        final result = await _googlePlacesService.fetchWalkingRoute(
-          origin: start,
-          destination: destination,
-          waypoints: waypoints,
-        );
-
-        if (!mounted) return;
-
-        routePoints = result.points;
-        setState(() {
-          _routeDistance = result.distance;
-          _routeDuration = result.duration;
-          _routeSteps = result.steps;
-          _polylines
-            ..clear()
-            ..add(
-              Polyline(
-                polylineId: const PolylineId('walking_route'),
-                points: result.points,
-                color: const Color(0xFF1A73E8),
-                width: 5,
-              ),
-            );
-        });
-      } on GooglePlacesException catch (e) {
-        if (!mounted) return;
-        setState(() => _isLoadingRoute = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Route error: ${e.message}')));
-        return;
-      }
-    }
-
-    if (routePoints.isEmpty) return;
-
-    final bounds = LatLngBounds(
-      southwest: LatLng(
-        min(start.latitude, destination.latitude),
-        min(start.longitude, destination.longitude),
-      ),
-      northeast: LatLng(
-        max(start.latitude, destination.latitude),
-        max(start.longitude, destination.longitude),
-      ),
-    );
-
-    await _mapController?.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 80),
-    );
-  }
+  //   await _mapController?.animateCamera(
+  //     CameraUpdate.newLatLngBounds(bounds, 80),
+  //   );
+  // }
 
   Future<void> _useCurrentLocation() async {
     final position = _currentPosition;
