@@ -104,7 +104,7 @@ class _HomePageState extends State<HomePage> {
   void _initMarkerIcons() {
     setState(() {
       _startMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
-        BitmapDescriptor.hueAzure,
+        BitmapDescriptor.hueGreen,
       );
       _destinationMarkerIcon = BitmapDescriptor.defaultMarkerWithHue(
         BitmapDescriptor.hueRed,
@@ -455,7 +455,7 @@ class _HomePageState extends State<HomePage> {
           icon: selectedField == SearchFieldType.start
               ? (_startMarkerIcon ??
                     BitmapDescriptor.defaultMarkerWithHue(
-                      BitmapDescriptor.hueAzure,
+                      BitmapDescriptor.hueGreen,
                     ))
               : (_destinationMarkerIcon ??
                     BitmapDescriptor.defaultMarkerWithHue(
