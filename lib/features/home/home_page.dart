@@ -78,7 +78,7 @@ class _HomePageState extends State<HomePage> {
   PreferencesData? _preferencesSnapshot;
   bool _isHandlingMapTap = false;
 
-  double _cameraBearing = 0;
+  final ValueNotifier<double> _cameraBearing = ValueNotifier(0);
 
   Future<void> _loadSavedPreferences() async {
     final prefs = await _loadPreferencesFromSupabase();
@@ -229,10 +229,10 @@ class _HomePageState extends State<HomePage> {
 
     if (!mounted) return;
 
+    _cameraBearing.value = 0;
     setState(() {
       _currentPosition = result.position;
       _isGettingLocation = false;
-      _cameraBearing = 0;
     });
 
     await _mapController?.animateCamera(
@@ -265,9 +265,7 @@ class _HomePageState extends State<HomePage> {
 
     if (!mounted) return;
 
-    setState(() {
-      _cameraBearing = 0;
-    });
+    _cameraBearing.value = 0;
   }
 
   TextEditingController? get _activeController {
@@ -421,9 +419,8 @@ class _HomePageState extends State<HomePage> {
     );
 
     final name = prediction.mainText;
+    _cameraBearing.value = 0;
     setState(() {
-      _cameraBearing = 0;
-
       final markerId = selectedField == SearchFieldType.start
           ? const MarkerId('start_place')
           : const MarkerId('destination_place');
@@ -535,7 +532,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _dismissKeyboardAndSuggestions() {
-    FocusScope.of(context).unfocus();
+    _startFocusNode.unfocus();
+    _destinationFocusNode.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
 
     Future.delayed(const Duration(milliseconds: 100), () {
       if (!mounted) return;
@@ -940,15 +939,18 @@ class _HomePageState extends State<HomePage> {
     _startFocusNode.dispose();
     _destinationFocusNode.dispose();
     _mapController?.dispose();
+    _cameraBearing.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _dismissKeyboardAndSuggestions,
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => _dismissKeyboardAndSuggestions(),
       child: Scaffold(
         key: _scaffoldKey,
+        resizeToAvoidBottomInset: false,
         drawer: const SettingsDrawer(),
         body: Stack(
           children: [
@@ -1006,10 +1008,7 @@ class _HomePageState extends State<HomePage> {
                   await _getCurrentLocation();
                 },
                 onCameraMove: (position) {
-                  if (!mounted) return;
-                  setState(() {
-                    _cameraBearing = position.bearing;
-                  });
+                  _cameraBearing.value = position.bearing;
                 },
                 onTap: (_) => _dismissKeyboardAndSuggestions(),
               ),
@@ -1067,50 +1066,53 @@ class _HomePageState extends State<HomePage> {
                 alignment: Alignment.bottomLeft,
                 child: Padding(
                   padding: const EdgeInsets.only(left: 16, bottom: 108),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Compass — fades in when map is off-north, hidden when north
-                      IgnorePointer(
-                        ignoring: _cameraBearing.abs() < 0.5,
-                        child: AnimatedOpacity(
-                          opacity: _cameraBearing.abs() < 0.5 ? 0.0 : 1.0,
-                          duration: const Duration(milliseconds: 250),
-                          curve: Curves.easeInOut,
-                          child: MapCompass(
-                            bearing: _cameraBearing,
-                            onTap: _resetMapNorth,
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _cameraBearing,
+                    builder: (context, bearing, child) => Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Compass — fades in when map is off-north, hidden when north
+                        IgnorePointer(
+                          ignoring: bearing.abs() < 0.5,
+                          child: AnimatedOpacity(
+                            opacity: bearing.abs() < 0.5 ? 0.0 : 1.0,
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeInOut,
+                            child: MapCompass(
+                              bearing: bearing,
+                              onTap: _resetMapNorth,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      if (_currentPosition != null)
-                        Material(
-                          color: Colors.white,
-                          elevation: 4,
-                          shape: const CircleBorder(),
-                          child: InkWell(
-                            onTap: () => _mapController?.animateCamera(
-                              CameraUpdate.newLatLng(
-                                LatLng(
-                                  _currentPosition!.latitude,
-                                  _currentPosition!.longitude,
+                        const SizedBox(height: 8),
+                        if (_currentPosition != null)
+                          Material(
+                            color: Colors.white,
+                            elevation: 4,
+                            shape: const CircleBorder(),
+                            child: InkWell(
+                              onTap: () => _mapController?.animateCamera(
+                                CameraUpdate.newLatLng(
+                                  LatLng(
+                                    _currentPosition!.latitude,
+                                    _currentPosition!.longitude,
+                                  ),
+                                ),
+                              ),
+                              customBorder: const CircleBorder(),
+                              child: const SizedBox(
+                                width: 48,
+                                height: 48,
+                                child: Icon(
+                                  Icons.my_location,
+                                  size: 24,
+                                  color: Color(0xFF1A73E8),
                                 ),
                               ),
                             ),
-                            customBorder: const CircleBorder(),
-                            child: const SizedBox(
-                              width: 48,
-                              height: 48,
-                              child: Icon(
-                                Icons.my_location,
-                                size: 24,
-                                color: Color(0xFF1A73E8),
-                              ),
-                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1128,7 +1130,12 @@ class _HomePageState extends State<HomePage> {
                     !_isNavigating,
                 isNavigating: _isNavigating,
                 isLoadingRoute: _isLoadingRoute,
-                onSettingsTap: () => _scaffoldKey.currentState?.openDrawer(),
+                onSettingsTap: () {
+                  _startFocusNode.unfocus();
+                  _destinationFocusNode.unfocus();
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  _scaffoldKey.currentState?.openDrawer();
+                },
                 onGoTap: _onGo,
                 onStopTap: _onEnd,
                 onPreferencesTap: () {

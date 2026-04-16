@@ -51,7 +51,7 @@ class SearchCard extends StatelessWidget {
                 height: 56,
                 child: Row(
                   children: [
-                    const Icon(Icons.directions_walk, color: Color(0xFF1A73E8), size: 22),
+                    const Icon(Icons.near_me, color: Color(0xFF1A73E8), size: 22),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
