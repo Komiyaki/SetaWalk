@@ -66,6 +66,7 @@ class _HomePageState extends State<HomePage> {
   String? _routeDistance;
   String? _routeDuration;
   List<RouteStep> _routeSteps = [];
+  List<dynamic> _chosenPois = const [];
   BitmapDescriptor? _startMarkerIcon;
   BitmapDescriptor? _destinationMarkerIcon;
   BitmapDescriptor? _selectedMarkerIcon;
@@ -727,7 +728,9 @@ class _HomePageState extends State<HomePage> {
       _routeDistance = null;
       _routeDuration = null;
       _routeSteps = [];
+      _chosenPois = const [];
       _markers.removeWhere((m) => m.markerId.value.startsWith('waypoint_'));
+      _markers.removeWhere((m) => m.markerId.value.startsWith('chosen_poi_'));
     });
   }
 
@@ -755,6 +758,7 @@ class _HomePageState extends State<HomePage> {
         _routeDistance = result.distance;
         _routeDuration = result.duration;
         _routeSteps = result.steps;
+        _chosenPois = result.chosenPois;
         _polylines
           ..clear()
           ..add(
@@ -765,6 +769,33 @@ class _HomePageState extends State<HomePage> {
               width: 5,
             ),
           );
+
+        _markers.removeWhere((m) => m.markerId.value.startsWith('chosen_poi_'));
+        for (var i = 0; i < _chosenPois.length; i++) {
+          final p = _chosenPois[i];
+          if (p is! Map) continue;
+          final lat = p['latitude'] ?? p['lat'];
+          final lng = p['longitude'] ?? p['lng'] ?? p['lon'];
+          if (lat is! num || lng is! num) continue;
+          final name = (p['name'] ?? p['title'] ?? 'Chosen POI ${i + 1}')
+              .toString();
+          _markers.add(
+            Marker(
+              markerId: MarkerId('chosen_poi_$i'),
+              position: LatLng(lat.toDouble(), lng.toDouble()),
+              icon:
+                  _waypointMarkerIcon ??
+                  BitmapDescriptor.defaultMarkerWithHue(
+                    BitmapDescriptor.hueOrange,
+                  ),
+              onTap: () => _showLocationBottomSheet(
+                name,
+                LatLng(lat.toDouble(), lng.toDouble()),
+              ),
+            ),
+          );
+        }
+
         _isLoadingRoute = false;
         _isNavigating = true;
         _navigationDestination = _destinationController.text;
@@ -835,6 +866,7 @@ class _HomePageState extends State<HomePage> {
       _routeDistance = null;
       _routeDuration = null;
       _routeSteps = [];
+      _chosenPois = const [];
     });
     _startController.clear();
     _destinationController.clear();
