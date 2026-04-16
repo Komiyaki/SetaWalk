@@ -106,12 +106,14 @@ class DijkstraRouteResult {
   final String distance;
   final String duration;
   final List<RouteStep> steps;
+  final List<dynamic> chosenPois;
 
   const DijkstraRouteResult({
     required this.points,
     required this.distance,
     required this.duration,
     required this.steps,
+    required this.chosenPois,
   });
 }
 
@@ -129,6 +131,7 @@ extension DijkstraRoute on SupabaseRouteService {
         'a_longitude': origin.longitude,
         'b_latitude': destination.latitude,
         'b_longitude': destination.longitude,
+        'debug_mode': true,
       },
     );
 
@@ -136,13 +139,32 @@ extension DijkstraRoute on SupabaseRouteService {
       throw const SupabaseRouteException('get_path returned null');
     }
 
-    final list = raw as List<dynamic>;
-    if (list.isEmpty) {
+    // Back-compat:
+    // - Old server: returns [[lat, lng], ...]
+    // - New server: returns { path: [[lat, lng], ...], chosen_pois: [...] }
+    final List<dynamic> pathList;
+    final List<dynamic> chosenPois;
+    if (raw is List) {
+      pathList = raw;
+      chosenPois = const [];
+    } else if (raw is Map) {
+      final dynamic maybePath = raw['path'];
+      if (maybePath is! List) {
+        throw const SupabaseRouteException('get_path did not return a valid path');
+      }
+      pathList = maybePath;
+      final dynamic maybePois = raw['chosen_pois'];
+      print('chosen_pois: $maybePois');
+      chosenPois = maybePois is List ? maybePois : const [];
+    } else {
+      throw const SupabaseRouteException('get_path returned an unexpected shape');
+    }
+
+    if (pathList.isEmpty) {
       throw const SupabaseRouteException('get_path returned an empty path');
     }
 
-    // Server returns [[lat, lng], ...]
-    final points = list.map((e) {
+    final points = pathList.map((e) {
       final pair = e as List<dynamic>;
       return LatLng(
         (pair[0] as num).toDouble(),
@@ -158,6 +180,7 @@ extension DijkstraRoute on SupabaseRouteService {
       distance: _formatDistance(totalMeters),
       duration: _formatDuration(totalMeters),
       steps: steps,
+      chosenPois: chosenPois,
     );
   }
 }
