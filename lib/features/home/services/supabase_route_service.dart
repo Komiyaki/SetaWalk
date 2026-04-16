@@ -133,12 +133,12 @@ extension DijkstraRoute on SupabaseRouteService {
     );
 
     if (raw == null) {
-      throw const SupabaseRouteException('get_dijkstra returned null');
+      throw const SupabaseRouteException('get_path returned null');
     }
 
     final list = raw as List<dynamic>;
     if (list.isEmpty) {
-      throw const SupabaseRouteException('get_dijkstra returned an empty path');
+      throw const SupabaseRouteException('get_path returned an empty path');
     }
 
     // Server returns [[lat, lng], ...]

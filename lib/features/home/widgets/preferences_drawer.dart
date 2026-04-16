@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/preferences_data.dart';
@@ -52,6 +54,7 @@ class PreferencesDrawer extends StatelessWidget {
                     const SizedBox(height: 28),
                     _PreferenceSliderRow(
                       label: 'Shrines',
+                      snackLabel: (v) => 'Set to see $v shrine${v == 1 ? '' : 's'}',
                       value: preferences.shrines,
                       min: 0,
                       max: 5,
@@ -61,6 +64,7 @@ class PreferencesDrawer extends StatelessWidget {
                     const SizedBox(height: 20),
                     _PreferenceSliderRow(
                       label: 'Shopping',
+                      snackLabel: (v) => 'Set to see $v shopping spot${v == 1 ? '' : 's'}',
                       value: preferences.shopping,
                       min: 0,
                       max: 5,
@@ -70,6 +74,7 @@ class PreferencesDrawer extends StatelessWidget {
                     const SizedBox(height: 20),
                     _PreferenceSliderRow(
                       label: 'Cafes',
+                      snackLabel: (v) => 'Set to see $v cafe${v == 1 ? '' : 's'}',
                       value: preferences.cafes,
                       min: 0,
                       max: 5,
@@ -79,6 +84,7 @@ class PreferencesDrawer extends StatelessWidget {
                     const SizedBox(height: 20),
                     _PreferenceSliderRow(
                       label: 'Parks',
+                      snackLabel: (v) => 'Set to see $v park${v == 1 ? '' : 's'}',
                       value: preferences.parks,
                       min: 0,
                       max: 5,
@@ -87,7 +93,8 @@ class PreferencesDrawer extends StatelessWidget {
                     ),
                     const SizedBox(height: 20),
                     _PreferenceSliderRow(
-                      label: 'Added Duration',
+                      label: 'Duration',
+                      snackLabel: (v) => 'Extra walk time set to $v%',
                       value: preferences.addedDuration,
                       min: 50,
                       max: 200,
@@ -128,8 +135,9 @@ class PreferencesDrawer extends StatelessWidget {
   }
 }
 
-class _PreferenceSliderRow extends StatelessWidget {
+class _PreferenceSliderRow extends StatefulWidget {
   final String label;
+  final String Function(int) snackLabel;
   final double value;
   final double min;
   final double max;
@@ -138,6 +146,7 @@ class _PreferenceSliderRow extends StatelessWidget {
 
   const _PreferenceSliderRow({
     required this.label,
+    required this.snackLabel,
     required this.value,
     required this.min,
     required this.max,
@@ -146,21 +155,64 @@ class _PreferenceSliderRow extends StatelessWidget {
   });
 
   @override
+  State<_PreferenceSliderRow> createState() => _PreferenceSliderRowState();
+}
+
+class _PreferenceSliderRowState extends State<_PreferenceSliderRow> {
+  String _message = '';
+  bool _visible = false;
+  Timer? _hideTimer;
+
+  void _showMessage(int value) {
+    _hideTimer?.cancel();
+    setState(() {
+      _message = widget.snackLabel(value);
+      _visible = true;
+    });
+    _hideTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (mounted) setState(() => _visible = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _hideTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 110,
-          child: Text(label, style: const TextStyle(fontSize: 16)),
+        Row(
+          children: [
+            SizedBox(
+              width: 110,
+              child: Text(widget.label, style: const TextStyle(fontSize: 16)),
+            ),
+            Expanded(
+              child: Slider(
+                value: widget.value,
+                min: widget.min,
+                max: widget.max,
+                divisions: widget.divisions,
+                label: widget.value.round().toString(),
+                onChanged: widget.onChanged,
+                onChangeEnd: (v) => _showMessage(v.round()),
+              ),
+            ),
+          ],
         ),
-        Expanded(
-          child: Slider(
-            value: value,
-            min: min,
-            max: max,
-            divisions: divisions,
-            label: value.round().toString(),
-            onChanged: onChanged,
+        AnimatedOpacity(
+          opacity: _visible ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 300),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 110, bottom: 2),
+            child: Text(
+              _message,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
           ),
         ),
       ],

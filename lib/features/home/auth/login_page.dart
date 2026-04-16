@@ -67,7 +67,11 @@ class _LoginPageState extends State<LoginPage> {
             children: [
               const SizedBox(height: 60),
 
-              Lottie.asset('assets/lottie/login.json', height: 200),
+              Image.asset(
+                'assets/setawalk_logo_new.png',
+                height: 160,
+                fit: BoxFit.contain,
+              ),
 
               const SizedBox(height: 20),
 
