@@ -123,7 +123,7 @@ extension DijkstraRoute on SupabaseRouteService {
     required LatLng destination,
   }) async {
     final dynamic raw = await Supabase.instance.client.rpc(
-      'get_dijkstra',
+      'get_path',
       params: {
         'a_latitude': origin.latitude,
         'a_longitude': origin.longitude,
