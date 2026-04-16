@@ -25,7 +25,7 @@ class SettingsDrawer extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
               child: Text(
-                'Settings',
+                'Menu',
                 style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700),
               ),
             ),
@@ -58,6 +58,23 @@ class SettingsDrawer extends StatelessWidget {
               leading: const Icon(Icons.logout),
               title: const Text('Logout'),
               onTap: () => _logout(context),
+            ),
+            const Spacer(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
+              child: Image.asset(
+                'assets/setawalk_logo_new.png',
+                height: 96,
+                fit: BoxFit.contain,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              child: Text(
+                'Version 1.0.0',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+              ),
             ),
           ],
         ),
