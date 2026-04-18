@@ -804,7 +804,7 @@ class _HomePageState extends State<HomePage> {
             Marker(
               markerId: MarkerId('chosen_poi_$i'),
               position: LatLng(lat.toDouble(), lng.toDouble()),
-              icon: _waypointMarkerIcon ?? getMarkerIcon(color ?? 0),
+              icon: getMarkerIcon(color ?? 0),
               onTap: () => _showLocationBottomSheet(
                 name,
                 LatLng(lat.toDouble(), lng.toDouble()),
