@@ -770,24 +770,41 @@ class _HomePageState extends State<HomePage> {
             ),
           );
 
+        // Optional: show chosen POIs as markers if they include coordinates.
         _markers.removeWhere((m) => m.markerId.value.startsWith('chosen_poi_'));
         for (var i = 0; i < _chosenPois.length; i++) {
           final p = _chosenPois[i];
           if (p is! Map) continue;
-          final lat = p['latitude'] ?? p['lat'];
-          final lng = p['longitude'] ?? p['lng'] ?? p['lon'];
+          final lat = p['lat'];
+          final lng = p['lng'];
+          final color = p['tag_id'];
+          //1 greenway (green)
+          //2 shopping (pink)
+          //3 eating (orsnge)
+          //4 park (green)
+          //5 place of worship (purple)
           if (lat is! num || lng is! num) continue;
-          final name = (p['name'] ?? p['title'] ?? 'Chosen POI ${i + 1}')
-              .toString();
+          final name = ('Chosen POI ${i + 1}').toString();
+          BitmapDescriptor getMarkerIcon(int tagId) {
+          switch (tagId) {
+            case 1:
+            case 4:
+              return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+            case 2:
+              return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose);
+            case 3:
+              return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+            case 5:
+              return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueMagenta);
+            default:
+            return BitmapDescriptor.defaultMarker;
+          }
+          }
           _markers.add(
             Marker(
               markerId: MarkerId('chosen_poi_$i'),
               position: LatLng(lat.toDouble(), lng.toDouble()),
-              icon:
-                  _waypointMarkerIcon ??
-                  BitmapDescriptor.defaultMarkerWithHue(
-                    BitmapDescriptor.hueOrange,
-                  ),
+              icon: _waypointMarkerIcon ?? getMarkerIcon(color ?? 0),
               onTap: () => _showLocationBottomSheet(
                 name,
                 LatLng(lat.toDouble(), lng.toDouble()),
