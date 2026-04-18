@@ -94,13 +94,12 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
   assets:
-  - assets/setawalk_logo_new.png
+  - assets/setawalk_logo_new_app.png
+  - assets/background.png
 
 flutter_launcher_icons:
   android: true
   ios: true
-
-  image_path: assets/logo.png
-
+  image_path: assets/setawalk_logo_new_app.png
   adaptive_icon_foreground: assets/setawalk_logo_new_app.png
   adaptive_icon_background: assets/background.png
