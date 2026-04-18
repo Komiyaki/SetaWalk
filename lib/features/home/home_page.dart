@@ -785,8 +785,8 @@ class _HomePageState extends State<HomePage> {
           //5 place of worship (purple)
           if (lat is! num || lng is! num) continue;
           final name = ('Chosen POI ${i + 1}').toString();
-          BitmapDescriptor getMarkerIcon(int tagId) {
-          switch (tagId) {
+          BitmapDescriptor getMarkerIcon(color) {
+          switch (color) {
             case 1:
             case 4:
               return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
@@ -804,7 +804,7 @@ class _HomePageState extends State<HomePage> {
             Marker(
               markerId: MarkerId('chosen_poi_$i'),
               position: LatLng(lat.toDouble(), lng.toDouble()),
-              icon: _waypointMarkerIcon ?? getMarkerIcon(color ?? 0),
+              icon: getMarkerIcon(color ?? 0),
               onTap: () => _showLocationBottomSheet(
                 name,
                 LatLng(lat.toDouble(), lng.toDouble()),
