@@ -785,8 +785,8 @@ class _HomePageState extends State<HomePage> {
           //5 place of worship (purple)
           if (lat is! num || lng is! num) continue;
           final name = ('Chosen POI ${i + 1}').toString();
-          BitmapDescriptor getMarkerIcon(int tagId) {
-          switch (tagId) {
+          BitmapDescriptor getMarkerIcon(color) {
+          switch (color) {
             case 1:
             case 4:
               return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
