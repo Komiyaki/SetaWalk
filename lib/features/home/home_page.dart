@@ -14,6 +14,7 @@ import 'models/search_field_type.dart';
 import 'services/google_places_service.dart';
 import 'services/location_service.dart';
 import 'services/supabase_route_service.dart';
+import 'utils/poi_tag_style.dart';
 import 'widgets/bottom_nav_bar.dart';
 import 'widgets/map_compass.dart';
 import 'widgets/preferences_drawer.dart';
@@ -770,45 +771,24 @@ class _HomePageState extends State<HomePage> {
             ),
           );
 
-        // Optional: show chosen POIs as markers if they include coordinates.
         _markers.removeWhere((m) => m.markerId.value.startsWith('chosen_poi_'));
         for (var i = 0; i < _chosenPois.length; i++) {
           final p = _chosenPois[i];
           if (p is! Map) continue;
           final lat = p['lat'];
           final lng = p['lng'];
-          final color = p['tag_id'];
-          //1 greenway (green)
-          //2 shopping (pink)
-          //3 eating (orsnge)
-          //4 park (green)
-          //5 place of worship (purple)
           if (lat is! num || lng is! num) continue;
           final name = ('Chosen POI ${i + 1}').toString();
-          BitmapDescriptor getMarkerIcon(color) {
-          switch (color) {
-            case 1:
-            case 4:
-              return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
-            case 2:
-              return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRose);
-            case 3:
-              return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
-            case 5:
-              return BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueMagenta);
-            default:
-            return BitmapDescriptor.defaultMarker;
-          }
-          }
           _markers.add(
             Marker(
               markerId: MarkerId('chosen_poi_$i'),
               position: LatLng(lat.toDouble(), lng.toDouble()),
-              icon: getMarkerIcon(color ?? 0),
+              icon: PoiTagStyle.markerIconForTagId(p['tag_id']),
               onTap: () => _showLocationBottomSheet(
                 name,
                 LatLng(lat.toDouble(), lng.toDouble()),
               ),
+
             ),
           );
         }
