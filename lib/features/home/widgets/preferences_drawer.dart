@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/preferences_data.dart';
+import '../utils/poi_tag_style.dart';
 
 class PreferencesDrawer extends StatelessWidget {
   final PreferencesData preferences;
@@ -59,6 +60,8 @@ class PreferencesDrawer extends StatelessWidget {
                       min: 0,
                       max: 5,
                       divisions: 5,
+                      accentColor:
+                          PoiTagStyle.colorForTagId(PoiTagStyle.placeOfWorship),
                       onChanged: onShrinesChanged,
                     ),
                     const SizedBox(height: 20),
@@ -69,6 +72,7 @@ class PreferencesDrawer extends StatelessWidget {
                       min: 0,
                       max: 5,
                       divisions: 5,
+                      accentColor: PoiTagStyle.colorForTagId(PoiTagStyle.shopping),
                       onChanged: onShoppingChanged,
                     ),
                     const SizedBox(height: 20),
@@ -79,6 +83,7 @@ class PreferencesDrawer extends StatelessWidget {
                       min: 0,
                       max: 5,
                       divisions: 5,
+                      accentColor: PoiTagStyle.colorForTagId(PoiTagStyle.eating),
                       onChanged: onCafesChanged,
                     ),
                     const SizedBox(height: 20),
@@ -89,6 +94,7 @@ class PreferencesDrawer extends StatelessWidget {
                       min: 0,
                       max: 5,
                       divisions: 5,
+                      accentColor: PoiTagStyle.colorForTagId(PoiTagStyle.park),
                       onChanged: onParksChanged,
                     ),
                     const SizedBox(height: 20),
@@ -142,6 +148,7 @@ class _PreferenceSliderRow extends StatefulWidget {
   final double min;
   final double max;
   final int divisions;
+  final Color? accentColor;
   final ValueChanged<double> onChanged;
 
   const _PreferenceSliderRow({
@@ -151,6 +158,7 @@ class _PreferenceSliderRow extends StatefulWidget {
     required this.min,
     required this.max,
     required this.divisions,
+    this.accentColor,
     required this.onChanged,
   });
 
@@ -182,6 +190,8 @@ class _PreferenceSliderRowState extends State<_PreferenceSliderRow> {
 
   @override
   Widget build(BuildContext context) {
+    final accent = widget.accentColor;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -189,17 +199,45 @@ class _PreferenceSliderRowState extends State<_PreferenceSliderRow> {
           children: [
             SizedBox(
               width: 110,
-              child: Text(widget.label, style: const TextStyle(fontSize: 16)),
+              child: Row(
+                children: [
+                  if (accent != null) ...[
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: accent,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(
+                    child: Text(widget.label, style: const TextStyle(fontSize: 16)),
+                  ),
+                ],
+              ),
             ),
             Expanded(
-              child: Slider(
-                value: widget.value,
-                min: widget.min,
-                max: widget.max,
-                divisions: widget.divisions,
-                label: widget.value.round().toString(),
-                onChanged: widget.onChanged,
-                onChangeEnd: (v) => _showMessage(v.round()),
+              child: SliderTheme(
+                data: accent == null
+                    ? SliderTheme.of(context)
+                    : SliderTheme.of(context).copyWith(
+                        activeTrackColor: accent,
+                        inactiveTrackColor: accent.withOpacity(0.25),
+                        thumbColor: accent,
+                        overlayColor: accent.withOpacity(0.12),
+                        valueIndicatorColor: accent,
+                      ),
+                child: Slider(
+                  value: widget.value,
+                  min: widget.min,
+                  max: widget.max,
+                  divisions: widget.divisions,
+                  label: widget.value.round().toString(),
+                  onChanged: widget.onChanged,
+                  onChangeEnd: (v) => _showMessage(v.round()),
+                ),
               ),
             ),
           ],
